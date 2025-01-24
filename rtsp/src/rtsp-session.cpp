@@ -2,11 +2,16 @@
 // Created by zhangyuzhu8 on 2025/1/20.
 //
 #include "rtsp-session.h"
-#include "ini.hpp"
-#include "udp-client.h"
-#include "fmt/include/fmt/core.h"
+#include "rtsp-server.h"
 #include "rtsp-request.h"
 #include "rtsp-response.h"
+#include "udp-client.h"
+#include "url.h"
+#include "net.h"
+#include "player.h"
+#include "pusher.h"
+#include "ini.hpp"
+#include "fmt.h"
 
 
 Session* NewSession(Server* server, TcpStream conn )
@@ -43,15 +48,21 @@ Session* NewSession(Server* server, TcpStream conn )
 
 
     //session.logger = log.New(os.Stdout, fmt.Sprintf("[%s]", session.ID), log.LstdFlags|log.Lshortfile)
-    if (!utils.Debug) {
-        session.logger.SetOutput(utils.GetLogWriter());
-    }
+//    if (!utils.Debug) {
+//        logger::SetOutput(utils.GetLogWriter());
+//    }
     return session ;
 }
 
 Session::Session( TcpStream& conn) :Conn(std::move(conn) )
 {
 
+}
+
+string Session::String()
+{
+	return fmt::format("session{}{}[{}][{}][{}]", this->Type, this->TransType, this->Path, this->ID,
+                       this->Conn.peer().unwrap().to_string());
 }
 
 void Session::Stop()
@@ -108,7 +119,7 @@ void Session::Start()
                 continue;
             }
             auto channel = int(buf1[0]);
-            size_t rtpLen = int(binary.BigEndian.Uint16(buf2));
+            size_t rtpLen = u16::from_be_bytes( buf2[0], buf2[1]).value;
             auto _rtpBytes = new(std::nothrow) char[rtpLen];
             Slice<char> rtpBytes(_rtpBytes, rtpLen);
 
@@ -160,7 +171,7 @@ void Session::Start()
             reqBuf.Write(buf1)
             while( !this->Stoped) {
                 if line, isPrefix, err := this->connRW.ReadLine(); err != nullptr {
-                    logger.Println(err)
+                    logger::Println(err);
                     return
                 }
                 else {
@@ -179,10 +190,10 @@ void Session::Start()
                         if contentLen > 0 {
                             bodyBuf := make([]byte, contentLen)
                             if n, err := io.ReadFull(this->connRW, bodyBuf); err != nullptr {
-                                    logger.Println(err)
+                                    logger::Println(err)
                                     return
                             } else if n != contentLen {
-                                        logger.Printf("read rtsp request body failed, expect size[%d], got size[%d]", contentLen, n)
+                                        logger::Printf("read rtsp request body failed, expect size[%d], got size[%d]", contentLen, n)
                                         return
                                 }
                             req.Body = string(bodyBuf)
@@ -316,7 +327,8 @@ void Session::handleRequest(Request *req )
 				err := CheckAuth(authLine, req->Method, this->nonce)
 				if (err == nullptr) {
 					authFailed = false;
-				} else {
+				}
+                else {
 					logger::info("%v", err);
 				}
 			}
@@ -335,7 +347,7 @@ void Session::handleRequest(Request *req )
 		res->Header["Public"] = "DESCRIBE, SETUP, TEARDOWN, PLAY, PAUSE, OPTIONS, ANNOUNCE, RECORD";
     }
 	else if( req->Method == "ANNOUNCE" ) {
-		this->Type = SESSION_TYPE_PUSHER;
+		this->Type = SessionType::SESSION_TYPE_PUSHER;
 		this->URL = req->URL;
 
 		url, err := url.Parse(req.URL)
@@ -360,16 +372,18 @@ void Session::handleRequest(Request *req )
 			this->VCodec = sdp.Codec;
 			logger.Printf("video codec[%s]\n", this->VCodec);
 		}
-		addPusher := false;
+		auto addPusher = false;
 		if (this->closeOld) {
 			r, _ := this->Server.TryAttachToPusher(session);
 			if( r < -1 ){
 				logger.Printf("reject pusher.");
 				res.StatusCode = 406;
 				res.Status = "Not Acceptable";
-			} else if( r == 0 ){
+			}
+            else if( r == 0 ){
 				addPusher = true;
-			} else {
+			}
+            else {
 				logger.Printf("Attached to old pusher");
 				// 尝试发给客户端ANNOUCE
 				// players := pusher.GetPlayers()
@@ -389,7 +403,8 @@ void Session::handleRequest(Request *req )
 				// 	sess.connWLock.Unlock()
 				// }
 			}
-		} else {
+		}
+        else {
 			addPusher = true;
 		}
 		if( addPusher) {
@@ -403,30 +418,30 @@ void Session::handleRequest(Request *req )
 		}
     }
 	else if( req->Method == "DESCRIBE"  ) {
-		this->Type = SESSEION_TYPE_PLAYER;
+		this->Type = SessionType::SESSEION_TYPE_PLAYER;
 		this->URL = req->URL;
 
-		url, err := url.Parse(req.URL)
-		if err != nullptr {
-			res.StatusCode = 500
-			res.Status = "Invalid URL"
-			return
+		auto url_err = Url::Parse(req->URL);
+		if ( url_err.is_err()) {
+			res->StatusCode = 500;
+			res ->Status = "Invalid URL";
+			return ;
 		}
-		this->Path = url.Path
-		pusher := this->Server.GetPusher(this->ath)
-		if pusher == nullptr {
-			res.StatusCode = 404
-			res.Status = "NOT FOUND"
-			return
+		this->Path = url_err.unwrap().Path();
+		auto pusher = this->Server->GetPusher(this->ath);
+		if (pusher == nullptr) {
+			res->StatusCode = 404;
+			res->Status = "NOT FOUND";
+			return ;
 		}
-		this->Player = NewPlayer(session, pusher);
+		this->Player = NewPlayer(this, pusher);
 		this->Pusher = pusher;
 		this->AControl = pusher.AControl();
 		this->VControl = pusher.VControl();
 		this->ACodec = pusher.ACodec();
 		this->VCodec = pusher.VCodec();
 		this->Conn.timeout = 0;
-		res->SetBody(this->Pusher.SDPRaw());
+		res->SetBody(this->Pusher->SDPRaw());
     }
 	else if( req->Method == "SETUP"  ) {
 		ts := req->Header["Transport"];
@@ -437,34 +452,36 @@ void Session::handleRequest(Request *req )
 		// a=control:rtsp://192.168.1.64/trackID=1
 		// 例3：
 		// a=control:?ctype=video
-		setupUrl, err := url.Parse(req.URL);
-		if err != nullptr {
-			res.StatusCode = 500;
-			res.Status = "Invalid URL";
+		auto setupUrl_err = Url::Parse(req->URL);
+		if ( setupUrl_err.is_err()){
+			res->StatusCode = 500;
+			res->Status = "Invalid URL";
 			return ;
 		}
-		if setupUrl.Port() == "" {
-			setupUrl.Host = fmt.Sprintf("%s:554", setupUrl.Host);
+        auto setupUrl = setupUrl_err.unwrap();
+		if (setupUrl.Port() == 0) {
+			setupUrl.setHost(fmt::format("{}:554", setupUrl.Hostname()));
 		}
-		setupPath := setupUrl.String();
+		auto setupPath = setupUrl.String();
 
 		// error status. SETUP without ANNOUNCE or DESCRIBE.
-		if this->Pusher == nullptr {
-			res.StatusCode = 500;
-			res.Status = "Error Status";
+		if (this->Pusher == nullptr) {
+			res->StatusCode = 500;
+			res->Status = "Error Status";
 			return;
 		}
 		//setupPath = setupPath[strings.LastIndex(setupPath, "/")+1:]
-		vPath := ""
-		if strings.Index(strings.ToLower(this->VControl), "rtsp://") == 0 {
-			vControlUrl, err := url.Parse(this->VControl);
-			if (err != nullptr ){
-				res.StatusCode = 500;
-				res.Status = "Invalid VControl";
+		string vPath  ;
+		if (strings.Index(strings.ToLower(this->VControl), "rtsp://") == 0 ){
+			auto vControlUrl_err = Url::Parse(this->VControl);
+			if (vControlUrl_err.is_err()){
+				res->StatusCode = 500;
+				res->Status = "Invalid VControl";
 				return;
 			}
-			if (vControlUrl.Port() == "" ){
-				vControlUrl.Host = fmt.Sprintf("%s:554", vControlUrl.Host);
+            auto vControlUrl =vControlUrl_err.unwrap();
+			if (vControlUrl.Port() == 0 ){
+				vControlUrl.setHost(fmt::format("{}:554", vControlUrl.Hostname()));
 			}
 			vPath = vControlUrl.String();
 		}
@@ -472,41 +489,43 @@ void Session::handleRequest(Request *req )
 			vPath = this->VControl;
 		}
 
-		aPath := ""
-		if strings.Index(strings.ToLower(this->AControl), "rtsp://") == 0 {
-			aControlUrl, err := url.Parse(this->AControl)
-			if( err != nullptr ){
-				res.StatusCode = 500;
-				res.Status = "Invalid AControl";
-				return
+        string aPath;
+		if (strings.Index(strings.ToLower(this->AControl), "rtsp://") == 0 ){
+			auto aControlUrl_err = Url::Parse(this->AControl);
+			if( aControlUrl_err.is_err()){
+				res->StatusCode = 500;
+				res->Status = "Invalid AControl";
+				return ;
 			}
-			if (aControlUrl.Port() == "") {
-				aControlUrl.Host = fmt.Sprintf("%s:554", aControlUrl.Host);
+            auto aControlUrl = aControlUrl_err.unwrap();
+			if (aControlUrl.Port() ==  0) {
+				aControlUrl.setHost( fmt::format("{}:554", aControlUrl.Hostname()));
 			}
 			aPath = aControlUrl.String();
-		} else {
+		}
+        else {
 			aPath = this->AControl;
 		}
 
-		mtcp := regexp.MustCompile("interleaved=(\\d+)(-(\\d+))?")
-		mudp := regexp.MustCompile("client_port=(\\d+)(-(\\d+))?")
+		mtcp := regexp.MustCompile("interleaved=(\\d+)(-(\\d+))?");
+		mudp := regexp.MustCompile("client_port=(\\d+)(-(\\d+))?");
 
-		if tcpMatchs := mtcp.FindStringSubmatch(ts); tcpMatchs != nullptr {
-			this->ransType = TRANS_TYPE_TCP
+		if (tcpMatchs := mtcp.FindStringSubmatch(ts); tcpMatchs != nullptr) {
+			this->ransType = TRANS_TYPE_TCP;
 			if (setupPath == aPath || aPath != "" && strings.LastIndex(setupPath, aPath) == len(setupPath)-len(aPath)) {
 				this->aRTPChannel, _ = strconv.Atoi(tcpMatchs[1]);
 				this->aRTPControlChannel, _ = strconv.Atoi(tcpMatchs[3]);
 			}
             else (if setupPath == vPath || vPath != "" && strings.LastIndex(setupPath, vPath) == len(setupPath)-len(vPath)) {
-				this->vRTPChannel, _ = strconv.Atoi(tcpMatchs[1])
-				this->vRTPControlChannel, _ = strconv.Atoi(tcpMatchs[3])
+				this->vRTPChannel, _ = strconv.Atoi(tcpMatchs[1]);
+				this->vRTPControlChannel, _ = strconv.Atoi(tcpMatchs[3]);
 			}
             else {
-				res.StatusCode = 500;
-				res.Status = fmt.Sprintf("SETUP [TCP] got UnKown control:%s", setupPath);
-				logger.Printf("SETUP [TCP] got UnKown control:%s", setupPath);
+				res->StatusCode = 500;
+				res->Status = fmt::format("SETUP [TCP] got UnKown control:{}", setupPath);
+				logger::Printf("SETUP [TCP] got UnKown control:{}", setupPath);
 			}
-			logger.Printf("Parse SETUP req.TRANSPORT:TCP.Session.Type:%d,control:%s, AControl:%s,VControl:%s", this->Type, setupPath, aPath, vPath);
+			logger.Printf("Parse SETUP req.TRANSPORT:TCP.Session.Type:{:d},control:{}, AControl:{},VControl:{}", this->Type, setupPath, aPath, vPath);
 		}
         else (if udpMatchs := mudp.FindStringSubmatch(ts); udpMatchs != nullptr ){
 			this->TransType = TRANS_TYPE_UDP;
@@ -522,7 +541,7 @@ void Session::handleRequest(Request *req )
 					Session: session,
 				}
 			}
-			logger.Printf("Parse SETUP req.TRANSPORT:UDP.Session.Type:%d,control:%s, AControl:%s,VControl:%s", this->Type, setupPath, aPath, vPath)
+			logger.Printf("Parse SETUP req.TRANSPORT:UDP.Session.Type:%d,control:%s, AControl:%s,VControl:%s", this->Type, setupPath, aPath, vPath);
 			if( setupPath == aPath || aPath != "" && strings.LastIndex(setupPath, aPath) == len(setupPath)-len(aPath)) {
 				if (this->Type == SESSEION_TYPE_PLAYER) {
 					this->UDPClient.APort, _ = strconv.Atoi(udpMatchs[1]);
@@ -581,7 +600,8 @@ void Session::handleRequest(Request *req )
 					tss = append(tss, tail...);
 					ts = strings.Join(tss, ";");
 				}
-			} else {
+			}
+            else {
 				logger.Printf("SETUP [UDP] got UnKown control:%s", setupPath);
 			}
 		}
@@ -611,20 +631,20 @@ void Session::handleRequest(Request *req )
 			res->Status = "Error Status";
 			return ;
 		}
-		this->Player.Pause(true) ;
+		this->Player->Pause(true) ;
 	}
 }
 
-RtspErr Session::SendRTP(RTPPack* pack)
+Result<void> Session::SendRTP(RTPPack* pack)
 {
 	if( pack == nullptr) {
 		return Err(fmt::format("player send rtp got nullptr pack"));
 	}
-	if (this->TransType == TRANS_TYPE_UDP) {
+	if (this->TransType == TransType::TRANS_TYPE_UDP) {
 		if (this->UDPClient == nullptr) {
 			return Err(fmt::format("player use udp transport but udp client not found"));
 		}
-		return this->UDPClient->SendRTP(pack)
+		return this->UDPClient->SendRTP(pack);
 	}
 	switch (pack->Type) {
 	case RTP_TYPE_AUDIO:

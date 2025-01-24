@@ -18,25 +18,28 @@
 
 using namespace std;
 
-//É¾³ı¿Õ°××Ö·û
+//åˆ é™¤ç©ºç™½å­—ç¬¦
 std::string& StringTrim(std::string &s, const string& split = " ");
 
-// Ê¹ÓÃ×Ö·û·Ö¸î
+// ä½¿ç”¨å­—ç¬¦åˆ†å‰²
 vector<string> StringSplit(const string& str, const char split );
 
-// Ê¹ÓÃ×Ö·û´®·Ö¸î
+// ä½¿ç”¨å­—ç¬¦ä¸²åˆ†å‰²
 vector<string> StringSplit(const string& str, const string& splits );
 
-// ·Ö¸î key value
+// åˆ†å‰² key value
 std::map<std::string, std::string> mappify2(std::string const& s);
 
-// ·Ö¸î key value
+// åˆ†å‰² key value
 bool mappify(std::string const& key_pos, string& key, string& value, const string& split = "=");
 
-// ×Ö·û´®ÊÇ·ñÒÔÖ¸¶¨×Ö·û´®¿ªÍ·
+// å­—ç¬¦ä¸²æ˜¯å¦ä»¥æŒ‡å®šå­—ç¬¦ä¸²å¼€å¤´
 bool StringHasPrefix(std::string& str, std::string prefix);
 
-//ÅĞ¶Ï×Ö·û´®ÊÇÊı×Ö
+//åˆ¤æ–­å­—ç¬¦ä¸²æ˜¯æ•°å­—
 bool string_isDigit(const std::string & str);
+
+// å­—ç¬¦ä¸²æ˜¯è½¬å°å†™
+string& string_ToLower( std::string& str);
 
 #endif //EASYDARWIN_STRINGEXTEND_H

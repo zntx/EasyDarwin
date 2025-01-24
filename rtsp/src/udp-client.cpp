@@ -211,7 +211,7 @@ RtspErr UDPClient::SendRTP( RTPPack* pack)
 //    }
 
     auto conn_ = conn->get();
-    size_t n = conn_->write(pack->Buffer);
+    size_t n = conn_.write(pack->Buffer);
 
 
     // logger.Printf("udp client write [%d/%d]", n, pack.Buffer.Len())

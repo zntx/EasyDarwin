@@ -1,84 +1,63 @@
 
 
-class RTSPClient {
-	Server *server;
-	SessionLogger
-	bool        	Stoped ;              
-	string        	Status;               
-	string        	URL ;                 
-	string        	Path ;                
-	string          CustomPath  ;//custom path for pusher         
-	string          ID ;                  
-	*RichConn       Conn;                 
-	string          Session ;             
-	int             Seq  ;                
-	*bufio.ReadWriter	connRW ;              
-	int        			InBytes ;             
-	int        			OutBytes ;            
-	TransType        	TransType ;           
-	time.Time        	StartAt ;             
-	*sdp.Session     	Sdp ;                 
-	string        	AControl;             
-	string        	VControl ;            
-	string        	ACodec ;              
-	string        	VCodec ;              
-	int64         	OptionIntervalMillis ;
-	string        	SDPRaw  ;             
+#include <string>
+#include <cstdint>
+#include <map>
+#include <chrono>
+#include <thread>
+#include <random>
+#include "fmt.h"
+#include "url.h"
+#include "utils.h"
+#include "comon.h"
+#include "stringExtend.h"
+#include "rtsp-client.h"
+#include "rtsp-response.h"
 
-	bool 			debugLogEnable 
-	uint16			lastRtpSN      
+RTSPClient::RTSPClient( Server *server, string rawUrl, string path, int64_t sendOptionMillis, string agent)
+{	
+	auto debugLogEnable = utils::Conf().Section("rtsp").Key("debug_log_enable").MustInt(0);
 
-	string			Agent    
-	string			authLine 
+    server =              server;
+	Stoped=               false;
+	URL=                  rawUrl;
+	ID=                   utils::RandomNumber();
+	Path=                 path;
+	TransType=            TransType::TRANS_TYPE_TCP;
+	vRTPChannel=          0;
+	vRTPControlChannel=   1;
+	aRTPChannel=          2;
+	aRTPControlChannel=   3;
+	OptionIntervalMillis= sendOptionMillis;
+	StartAt =              chrono::system_clock::now();
+	Agent =                agent;
+	debugLogEnable =       debugLogEnable != 0;
+}
 
-	//tcp channels
-	int aRTPChannel        ;
-	int aRTPControlChannel ;
-	int vRTPChannel        ;
-	int vRTPControlChannel ;
-
-	*UDPServer 		UDPServer ;  
-	[]func(*RTPPack) RTPHandles ; 
-	[]func()	StopHandles ;
-
-    string String();
-};
 
 string RTSPClient::String()
 {
-	return fmt.Sprintf("client[%s]", this->URL);
+	return fmt::format("client[{}]", this->URL);
 }
 
-(client *RTSPClient, err error)  NewRTSPClient(server *Server, rawUrl string, sendOptionMillis int64, agent string) 
+Result<RTSPClient> NewRTSPClient(Server *server, string rawUrl , int64_t sendOptionMillis , string agent ) 
 {
-	url, err := url.Parse(rawUrl)
-	if err != nullptr {
-		return
+	auto url_r =   Url::Parse(rawUrl);
+	if ( url_r.is_err()){
+		return Err(url_r.unwrap_err());
 	}
-	debugLogEnable := utils.Conf().Section("rtsp").Key("debug_log_enable").MustInt(0)
-	client = &RTSPClient{
-		Server:               server,
-		Stoped:               false,
-		URL:                  rawUrl,
-		ID:                   shortid.MustGenerate(),
-		Path:                 url.Path,
-		TransType:            TRANS_TYPE_TCP,
-		vRTPChannel:          0,
-		vRTPControlChannel:   1,
-		aRTPChannel:          2,
-		aRTPControlChannel:   3,
-		OptionIntervalMillis: sendOptionMillis,
-		StartAt:              time.Now(),
-		Agent:                agent,
-		debugLogEnable:       debugLogEnable != 0,
-	}
-	this->logger = log.New(os.Stdout, fmt.Sprintf("[%s]", this->ID), log.LstdFlags|log.Lshortfile)
-	if !utils.Debug {
-		this->logger.SetOutput(utils.GetLogWriter())
-	}
-	return
-}
 
+    auto url = url_r.unwrap();
+	
+	// this->logger = log.New(os.Stdout, fmt.Sprintf("[%s]", this->ID), log.LstdFlags|log.Lshortfile)
+	// if !utils.Debug {
+	// 	this->logger.SetOutput(utils.GetLogWriter())
+	// }
+
+    auto rtspClient = RTSPClient(server, rawUrl,url.Path(), sendOptionMillis, agent);
+	return Ok( std::move(rtspClient));
+}
+#if 0
 func DigestAuth(authLine string, method string, URL string) (string, error) {
 	l, err := url.Parse(URL)
 	if err != nullptr {
@@ -116,69 +95,78 @@ func DigestAuth(authLine string, method string, URL string) (string, error) {
 	Authorization := fmt.Sprintf("Digest username=\"%s\", realm=\"%s\", nonce=\"%s\", uri=\"%s\", response=\"%s\"", username, realm, nonce, l.String(), response)
 	return Authorization, nullptr
 }
-
-func (client *RTSPClient) checkAuth(method string, resp *Response) (string, error) {
-	if resp.StatusCode == 401 {
+#endif
+Result<string> RTSPClient::checkAuth(string method, Response* resp)
+{
+	if (resp->StatusCode == 401) {
 
 		// need auth.
-		AuthHeaders := resp.Header["WWW-Authenticate"]
-		auths, ok := AuthHeaders.([]string)
+		auto AuthHeaders = resp->Header["WWW-Authenticate"];
+		auths, ok := AuthHeaders.([]string);
 
 		if ok {
-			for _, authLine := range auths {
+			for( _, authLine := range auths) {
 
 				if strings.IndexAny(authLine, "Digest") == 0 {
 					// 					realm="HipcamRealServer",
 					// nonce="3b27a446bfa49b0c48c3edb83139543d"
 					this->authLine = authLine
 					return DigestAuth(authLine, method, this->URL)
-				} else if strings.IndexAny(authLine, "Basic") == 0 {
+				}
+                else if strings.IndexAny(authLine, "Basic") == 0 {
 					// not support yet
 					// TODO..
 				}
 
 			}
-			return "", fmt.Errorf("auth error")
-		} else {
+			return Err(string("auth error"));
+		}
+        else {
 			authLine, _ := AuthHeaders.(string)
 			if strings.IndexAny(authLine, "Digest") == 0 {
 				this->authLine = authLine
 				return DigestAuth(authLine, method, this->URL)
-			} else if strings.IndexAny(authLine, "Basic") == 0 {
+			}
+            else if strings.IndexAny(authLine, "Basic") == 0 {
 				// not support yet
 				// TODO..
-				return "", fmt.Errorf("not support Basic auth yet")
+				return Err(string("not support Basic auth yet"));
 			}
 		}
 	}
-	return "", nullptr
+	return Ok(string(""));
 }
 
-RtpErr RTSPClient::requestStream(timeout time.Duration)
+template <typename Rep, typename Period>
+Result<void> RTSPClient::requestStream( chrono::duration<Rep, Period>& timeout )
 {
-	defer func() {
-		if err != nullptr {
-			this->Status = "Error"
-		} else {
-			this->Status = "OK"
-		}
-	}()
+//	defer func() {
+//		if( err != nullptr ){
+//			this->Status = "Error";
+//		}
+//		else {
+//			this->Status = "OK";
+//		}
+//	}()
 
-	l, err := url.Parse(this->URL);
-	if( err != nullptr) {
-		return err;
+	auto l_r = Url::Parse(this->URL);
+	if( l_r.is_err()) {
+		return Err(l_r.unwrap_err());
 	}
-	if( strings.ToLower(l.Scheme) != "rtsp" ){
-		err = fmt.Errorf("RTSP url is invalid")
-		return err
+
+    auto l = l_r.unwrap();
+
+    auto method =  l.Method();
+	if( string_ToLower( method) != "rtsp" ){
+		return Err(std::string("RTSP url is invalid") );
 	}
-	if (strings.ToLower(l.Hostname()) == "" ){
-		err = fmt.Errorf("RTSP url is invalid");
-		return err;
+    auto hostname = l.Hostname();
+	if (string_ToLower( hostname).empty() ){
+		return Err(std::string("RTSP url is invalid") );
 	}
-	port := l.Port();
-	if (len(port) == 0) {
-		port = "554";
+	auto port = l.Port();
+	if ( port == 0) {
+		port = 554;
 	};
 	conn, err := net.DialTimeout("tcp", l.Hostname()+":"+port, timeout);
 	if( err != nullptr) {
@@ -186,7 +174,7 @@ RtpErr RTSPClient::requestStream(timeout time.Duration)
 		return err ;
 	}
 
-	networkBuffer := utils.Conf().Section("rtsp").Key("network_buffer").MustInt(204800);
+	auto networkBuffer = utils::Conf().Section("rtsp").Key("network_buffer").MustInt(204800);
 
 	timeoutConn := RichConn{
 		conn,
@@ -195,27 +183,30 @@ RtpErr RTSPClient::requestStream(timeout time.Duration)
 	this->Conn = &timeoutConn;
 	this->connRW = bufio.NewReadWriter(bufio.NewReaderSize(&timeoutConn, networkBuffer), bufio.NewWriterSize(&timeoutConn, networkBuffer));
 
-	headers := make(map[string]string);
+	map<string, string> headers ;
 	headers["Require"] = "implicit-play";
 	// An OPTIONS request returns the request types the server will accept.
-	resp, err := this->Request("OPTIONS", headers);
-	if( err != nullptr) {
-		if (resp != nullptr ){
-			Authorization, _ := this->checkAuth("OPTIONS", resp);
-			if (len(Authorization) > 0) {
-				headers := make(map[string]string);
-				headers["Require"] = "implicit-play";
-				headers["Authorization"] = Authorization;
-				// An OPTIONS request returns the request types the server will accept.
-				resp, err = this->Request("OPTIONS", headers);
-			}
-			if (err != nullptr ){
-				return err;
-			}
-		} else {
-			return err;
-		}
-	}
+	auto resp_err = this->Request("OPTIONS", headers);
+	if( resp_err.is_ok()) {
+		auto resp = resp_err.unwrap();
+
+        Authorization, _ := this->checkAuth("OPTIONS", resp);
+        if (len(Authorization) > 0) {
+            map<string, string> headers ;
+            headers["Require"] = "implicit-play";
+            headers["Authorization"] = Authorization;
+            // An OPTIONS request returns the request types the server will accept.
+            resp_err = this->Request("OPTIONS", headers);
+            if (err != nullptr ){
+                return err;
+            }
+        }
+
+    }
+    else {
+        return Err(resp_err.unwrap_err());
+    }
+
 
 	// A DESCRIBE request includes an RTSP URL (rtsp://...), and the type of reply data that can be handled. This reply includes the presentation description,
 	// typically in Session Description Protocol (SDP) format. Among other things, the presentation description lists the media streams controlled with the aggregate URL.
@@ -223,30 +214,31 @@ RtpErr RTSPClient::requestStream(timeout time.Duration)
 	headers = make(map[string]string);
 	headers["Accept"] = "application/sdp";
 	resp, err = this->Request("DESCRIBE", headers);
-	if err != nullptr {
-		if resp != nullptr {
+	if (err != nullptr ){
+		if (resp != nullptr ){
 			authorization, _ := this->checkAuth("DESCRIBE", resp)
-			if len(authorization) > 0 {
+			if (len(authorization) > 0 ){
 				headers := make(map[string]string)
 				headers["Authorization"] = authorization
 				headers["Accept"] = "application/sdp"
 				resp, err = this->Request("DESCRIBE", headers)
 			}
-			if err != nullptr {
+			if (err != nullptr) {
 				return err
 			}
-		} else {
+		}
+        else {
 			return err
 		}
 	}
 	_sdp, err := sdp.ParseString(resp.Body)
-	if err != nullptr {
+	if (err != nullptr) {
 		return err
 	}
-	this->Sdp = _sdp
-	this->SDPRaw = resp.Body
-	session := ""
-	for _, media := range _sdp.Media {
+	this->Sdp = _sdp;
+	this->SDPRaw = resp.Body;
+	session := "";
+	for( _, media := range _sdp.Media) {
 		switch media.Type {
 		case "video":
 			this->VControl = media.Attributes.Get("control")
@@ -260,7 +252,8 @@ RtpErr RTSPClient::requestStream(timeout time.Duration)
 			headers = make(map[string]string)
 			if this->TransType == TRANS_TYPE_TCP {
 				headers["Transport"] = fmt.Sprintf("RTP/AVP/TCP;unicast;interleaved=%d-%d", this->vRTPChannel, this->vRTPControlChannel)
-			} else {
+			}
+            else {
 				if this->UDPServer == nullptr {
 					this->UDPServer = &UDPServer{RTSPClient: client}
 				}
@@ -288,13 +281,15 @@ RtpErr RTSPClient::requestStream(timeout time.Duration)
 			var _url = ""
 			if strings.Index(strings.ToLower(this->AControl), "rtsp://") == 0 {
 				_url = this->AControl
-			} else {
+			}
+            else {
 				_url = strings.TrimRight(this->URL, "/") + "/" + strings.TrimLeft(this->AControl, "/")
 			}
 			headers = make(map[string]string)
 			if this->TransType == TRANS_TYPE_TCP {
 				headers["Transport"] = fmt.Sprintf("RTP/AVP/TCP;unicast;interleaved=%d-%d", this->aRTPChannel, this->aRTPControlChannel)
-			} else {
+			}
+            else {
 				if this->UDPServer == nullptr {
 					this->UDPServer = &UDPServer{RTSPClient: client}
 				}
@@ -318,22 +313,23 @@ RtpErr RTSPClient::requestStream(timeout time.Duration)
 		}
 	}
 	headers = make(map[string]string)
-	if session != "" {
+	if (session != "") {
 		headers["Session"] = session
 	}
 	resp, err = this->Request("PLAY", headers)
-	if err != nullptr {
+	if (err != nullptr) {
 		return err
 	}
 	return nullptr
 }
 
-func (client *RTSPClient) startStream() {
-	startTime := time.Now()
-	loggerTime := time.Now().Add(-10 * time.Second)
-	defer this->Stop()
-	for !this->Stoped {
-		if this->OptionIntervalMillis > 0 {
+Result<void>  RTSPClient::startStream()
+{
+	auto startTime = chrono::system_clock::now();
+    auto loggerTime = chrono::system_clock::now() - chrono::seconds(10);
+	defer this->Stop();
+	while (!this->Stoped) {
+		if (this->OptionIntervalMillis > 0 ){
 			if time.Since(startTime) > time.Duration(this->OptionIntervalMillis)*time.Millisecond {
 				startTime = time.Now()
 				headers := make(map[string]string)
@@ -472,91 +468,100 @@ func (client *RTSPClient) startStream() {
 	}
 }
 
-func (client *RTSPClient) Start(timeout time.Duration) (err error) {
-	if timeout == 0 {
-		timeoutMillis := utils.Conf().Section("rtsp").Key("timeout").MustInt(0)
-		timeout = time.Duration(timeoutMillis) * time.Millisecond
+template <typename Rep, typename Period>
+Result<void>  RTSPClient::Start( chrono::duration<Rep, Period>& timeout  )
+{
+	if ( timeout.count() == 0) {
+		auto timeoutMillis = utils::Conf().Section("rtsp").Key("timeout").MustInt(0);
+		//timeout = time.Duration(timeoutMillis) * time.Millisecond
+        timeout =  chrono::milliseconds(timeoutMillis);
 	}
-	err = this->requestStream(timeout)
-	if err != nullptr {
-		return
+	auto err = this->requestStream(timeout);
+	if (err.is_err() ){
+		return Err(err.unwrap_err());
 	}
-	go this->startStream()
-	return
+	//go this->startStream();
+    std::thread start_stream(&RTSPClient::startStream, this);
+    start_stream.detach();
+	return Ok();
 }
 
-func (client *RTSPClient) Stop() {
-	if this->Stoped {
-		return
+void RTSPClient::Stop()
+{
+	if (this->Stoped ){
+		return ;
 	}
-	this->Stoped = true
-	for _, h := range this->StopHandles {
-		h()
+	this->Stoped = true;
+	for ( auto &&h : this->StopHandles) {
+		h();
 	}
-	if this->Conn != nullptr {
-		this->connRW.Flush()
-		this->Conn.Close()
-		this->Conn = nullptr
+	if( this->Conn != nullptr) {
+		this->connRW.Flush();
+		delete this->Conn;
+		this->Conn = nullptr;
 	}
-	if this->UDPServer != nullptr {
-		this->UDPServer.Stop()
-		this->UDPServer = nullptr
+	if (this->UDPServer != nullptr) {
+		this->UDPServer->Stop();
+        delete  this->UDPServer;
+		this->UDPServer = nullptr;
 	}
 }
 
-func (client *RTSPClient) RequestWithPath(method string, path string, headers map[string]string, needResp bool) (resp *Response, err error) {
-	logger := this->logger
-	headers["User-Agent"] = this->Agent
-	if len(headers["Authorization"]) == 0 {
-		if len(this->authLine) != 0 {
+Result<Response*> RTSPClient::RequestWithPath(string method , string path , map<string,string> headers ,bool needResp )
+{
+	//logger := this->logger
+	headers["User-Agent"] = this->Agent;
+	if ( headers.find("Authorization") == headers.end() ){
+		if (this->authLine.size() != 0 ){
 			Authorization, _ := DigestAuth(this->authLine, method, this->URL)
 			if len(Authorization) > 0 {
-				headers["Authorization"] = Authorization
+				headers["Authorization"] = Authorization;
 			}
 		}
 	}
-	if len(this->Session) > 0 {
-		headers["Session"] = this->Session
+	if ( this->Session.size() > 0) {
+		headers["Session"] = this->Session;
 	}
-	this->Seq++
-	cseq := this->Seq
-	builder := bytes.Buffer{}
-	builder.WriteString(fmt.Sprintf("%s %s RTSP/1.0\r\n", method, path))
-	builder.WriteString(fmt.Sprintf("CSeq: %d\r\n", cseq))
-	for k, v := range headers {
-		builder.WriteString(fmt.Sprintf("%s: %s\r\n", k, v))
+	this->Seq++;
+	auto cseq = this->Seq;
+	builder := bytes.Buffer{};
+	builder.WriteString(fmt::format("{} %{} RTSP/1.0\r\n", method, path));
+	builder.WriteString(fmt::format("CSeq: {:d}\r\n", cseq));
+	for( auto && k_v :  headers) {
+		builder.WriteString(fmt::format("{}: {}\r\n", k_v.first, k_v.second));
 	}
-	builder.WriteString(fmt.Sprintf("\r\n"))
-	s := builder.String()
-	logger.Printf("[OUT]>>>\n%s", s)
-	_, err = this->connRW.WriteString(s)
-	if err != nullptr {
+	builder.WriteString(fmt::format("\r\n"));
+	s := builder.String();
+
+	logger::Printf("[OUT]>>>\n{}", s);
+	_, err = this->connRW.WriteString(s);
+	if (err != nullptr) {
 		return
 	}
-	this->connRW.Flush()
+	this->connRW.Flush();
 
-	if !needResp {
-		return nullptr, nullptr
+	if (!needResp) {
+		return nullptr, nullptr;
 	}
-	lineCount := 0
-	statusCode := 200
-	status := ""
-	sid := ""
-	contentLen := 0
-	respHeader := make(map[string]interface{})
-	var line []byte
-	builder.Reset()
-	for !this->Stoped {
-		isPrefix := false
+	lineCount := 0;
+	statusCode := 200;
+	status := "";
+	sid := "";
+	contentLen := 0;
+	respHeader := make(map[string]interface{});
+	var line []byt;
+	builder.Reset();
+	for( !this->Stoped ){
+		isPrefix := false;
 		if line, isPrefix, err = this->connRW.ReadLine(); err != nullptr {
 			return
 		}
-		s := string(line)
-		builder.Write(line)
-		if !isPrefix {
-			builder.WriteString("\r\n")
+		s := string(line);
+		builder.Write(line);
+		if (!isPrefix ){
+			builder.WriteString("\r\n");
 		}
-		if len(line) == 0 {
+		if (len(line) == 0 ){
 			body := ""
 			if contentLen > 0 {
 				content := make([]byte, contentLen)
@@ -627,33 +632,37 @@ func (client *RTSPClient) RequestWithPath(method string, path string, headers ma
 		}
 
 	}
-	if this->Stoped {
+	if (this->Stoped) {
 		err = fmt.Errorf("Client Stoped.")
 	}
 	return
 }
 
-func RTSPClient::Request(string method , map<string,string>  headers   (*Response, error) 
+Result<Response*> RTSPClient::Request(string method, map<string,string> headers)
 {
-	l, err := url.Parse(this->URL)
-	if err != nullptr {
-		return nullptr, fmt.Errorf("Url parse error:%v", err)
+	auto l_err = Url::Parse(this->URL);
+	if (l_err.is_err()) {
+		return Err( "Url parse error:" +  l_err.unwrap_err());
 	}
-	l.User = nullptr
-	return this->RequestWithPath(method, l.String(), headers, true)
+
+    auto l = l_err.unwrap();
+	//l.User = nullptr ;
+	return this->RequestWithPath(std::move(method), l.String(), std::move(headers), true);
 }
 
-RTtspErr RTSPClient::RequestNoResp(string method , map<string,string> headers ) 
+Result<void> RTSPClient::RequestNoResp(string method , map<string,string> headers)
 {
-	var (
-		l *url.URL
-	)
-	if l, err = url.Parse(this->URL); err != nullptr {
-		return fmt.Errorf("Url parse error:%v", err)
+    auto l_err = Url::Parse(this->URL);
+    if (l_err.is_err()) {
+        return Err( "Url parse error:" +  l_err.unwrap_err());
+    }
+
+    auto l = l_err.unwrap();
+
+	//l.User = nullptr
+    auto ret = this->RequestWithPath(std::move(method), l.String(), std::move(headers), false);
+	if ( ret.is_err()){
+		return Err(ret.unwrap_err());
 	}
-	l.User = nullptr
-	if _, err = this->RequestWithPath(method, l.String(), headers, false); err != nullptr {
-		return err
-	}
-	return nullptr
+	return Ok();
 }

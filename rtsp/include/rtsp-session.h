@@ -8,6 +8,7 @@
 #include <vector>
 #include "net/net.h"
 #include "hdlog.h"
+#include "comon.h"
 
 using namespace std;
 class Server;
@@ -17,41 +18,12 @@ class UDPClient;
 class Request;
 
 
-enum class SessionType {
-    SESSION_TYPE_PUSHER,
-    SESSEION_TYPE_PLAYER,
-};
-
-enum class TransType {
-    TRANS_TYPE_TCP,
-    TRANS_TYPE_UDP,
-};
-
-enum  RTPType {
-    RTP_TYPE_AUDIO,
-    RTP_TYPE_VIDEO,
-    RTP_TYPE_AUDIOCONTROL,
-    RTP_TYPE_VIDEOCONTROL,
-};
-
-struct RTPPack  {
-    int Type;
-    //bytes.Buffer* Buffer;
-    Slice<char> Buffer;
-};
-
-typedef void (*pRTPHandles)( RTPPack*);
-typedef void (*pStopHandles)( );
+#define UDP_BUF_SIZE 1048576
 
 
 
 class Session  {
-public:
-    Session( TcpStream& conn);
-    void Stop();
-    void Start();
-    void handleRequest(Request *req );
-    RtspErr SendRTP(RTPPack* pack);
+
 
 public:
     //SessionLogger
@@ -95,12 +67,21 @@ public:
     Pusher*      Pusher;
     Player*      Player;
     UDPClient*   UDPClient;
-    vector<pRTPHandles>   RTPHandles;
-    vector<pStopHandles > StopHandles;
+    vector<function<void(RTPPack*)>>  RTPHandles;
+    vector<function<void(void)>>  StopHandles;
 
+public:
+    string String();
+    Session( TcpStream& conn);
+    void Stop();
+    void Start();
+    void handleRequest(Request *req );
+    Result<void> SendRTP(RTPPack* pack);
 
 };
 
+
+Session* NewSession(Server* server, TcpStream conn );
 
 
 #endif //EASYDARWIN_RTSP_SESSION_H

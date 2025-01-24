@@ -129,3 +129,12 @@ bool string_isDigit(const std::string & str)
 {
     return !str.empty() && std::all_of(str.begin(), str.end(), ::isdigit);
 }
+
+string& string_ToLower( std::string& str)
+{
+    //std::string str = "Hello, World!";
+    // 使用 std::transform 和 std::tolower 转换为小写
+    std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) { return std::tolower(c); });
+    //std::cout << "Lowercase string: " << str << std::endl;
+    return str;
+}
