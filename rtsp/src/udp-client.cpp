@@ -12,39 +12,26 @@ void UDPClient::Stop()
         return ;
     }
     this->Stoped = true;
-    if (!this->AConn.is_empty() ){
-        this->AConn.unwrap();
-        //this->AConn = nil;
-    }
-    if (!this->AControlConn.is_empty()) {
-        this->AControlConn.unwrap();
-        //this->AControlConn = nil;
-    }
-    if (!this->VConn.is_empty() ){
-        this->VConn.unwrap();
-        //this->VConn = nil;
-    }
-    if (!this->VControlConn.is_empty()) {
-        this->VControlConn.unwrap();
-        //this->VControlConn = nil;
-    }
+ //   if (!this->AConn.is_empty() ){
+//        this->AConn.unwrap();
+//        //this->AConn = nil;
+//    }
+//    if (!this->AControlConn.is_empty()) {
+//        this->AControlConn.unwrap();
+//        //this->AControlConn = nil;
+//    }
+//    if (!this->VConn.is_empty() ){
+//        this->VConn.unwrap();
+//        //this->VConn = nil;
+//    }
+//    if (!this->VControlConn.is_empty()) {
+//        this->VControlConn.unwrap();
+//        //this->VControlConn = nil;
+//    }
 }
 
 RtspErr UDPClient::SetupAudio()
 {
-#if 0
-    var (
-            logger = c.logger
-            addr   *net.UDPAddr
-    )
-    defer func() {
-        if err != nil {
-                    logger.Println(err)
-                    c.Stop()
-            }
-    }()
-#endif
-
     //auto host = this->session->Conn.get().peer_addr();
     auto host_wrap = this->session->Conn.peer();
     if( host_wrap.is_err())
@@ -53,23 +40,7 @@ RtspErr UDPClient::SetupAudio()
     }
 
     auto host = host_wrap.unwrap();
-    //host = host[:strings.LastIndex(host, ":")]
-#if 0
-    if addr, err = net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", host, this->APort)); err != nil {
-            return
-    }
-    this->AConn, err = net.DialUDP("udp", nil, addr)
-    if err != nil {
-        return
-    }
-    networkBuffer := utils.Conf().Section("rtsp").Key("network_buffer").MustInt(1048576)
-    if err = this->AConn.SetReadBuffer(networkBuffer); err != nil {
-            logger.Printf("udp client audio conn set read buffer error, %v", err)
-    }
-    if err = c.AConn.SetWriteBuffer(networkBuffer); err != nil {
-            logger.Printf("udp client audio conn set write buffer error, %v", err)
-    }
-#endif
+
     host.set_port(this->APort);
     Result<UdpSocket> _con = UdpSocket::Connect( host , 0);
     if( _con.is_err()){
@@ -77,22 +48,6 @@ RtspErr UDPClient::SetupAudio()
     }
     this->AConn = Some(_con.unwrap());
 
-#if 0
-    addr, err = net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", host, c.AControlPort))
-    if err != nil {
-        return
-    }
-    c.AControlConn, err = net.DialUDP("udp", nil, addr)
-    if err != nil {
-        return
-    }
-    if err = c.AControlConn.SetReadBuffer(networkBuffer); err != nil {
-        logger.Printf("udp client audio control conn set read buffer error, %v", err)
-    }
-    if err = c.AControlConn.SetWriteBuffer(networkBuffer); err != nil {
-        logger.Printf("udp client audio control conn set write buffer error, %v", err)
-    }
-#endif
     host.set_port(this->AControlPort);
     Result<UdpSocket> __con = UdpSocket::Connect( host , 0);
     if( __con.is_err()){
@@ -105,20 +60,6 @@ RtspErr UDPClient::SetupAudio()
 
 RtspErr UDPClient::SetupVideo()
 {
-#if 0
-    var (
-            logger = c.logger
-    addr   *net.UDPAddr
-    )
-    defer func() {
-        if err != nil {
-                    logger.Println(err)
-                    c.Stop()
-            }
-    }()
-#endif
-//    host := c.Conn.RemoteAddr().String()
-//    host = host[:strings.LastIndex(host, ":")]
     auto host_wrap = this->session->Conn.peer();
     if( host_wrap.is_err())
     {
@@ -126,43 +67,13 @@ RtspErr UDPClient::SetupVideo()
     }
 
     auto host = host_wrap.unwrap();
-#if 0
-    if addr, err = net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", host, c.VPort)); err != nil {
-            return
-    }
-    if c.VConn, err = net.DialUDP("udp", nil, addr); err != nil {
-            return
-    }
-    networkBuffer := utils.Conf().Section("rtsp").Key("network_buffer").MustInt(1048576)
-    if err = c.VConn.SetReadBuffer(networkBuffer); err != nil {
-            logger.Printf("udp client video conn set read buffer error, %v", err)
-    }
-    if err = c.VConn.SetWriteBuffer(networkBuffer); err != nil {
-            logger.Printf("udp client video conn set write buffer error, %v", err)
-    }
-#endif
+
     host.set_port(this->VPort);
     Result<UdpSocket> _con = UdpSocket::Connect( host , 0);
     if( _con.is_err()){
         return Err(_con.unwrap_err());
     }
     this->VConn = Some(_con.unwrap());
-#if 0
-    addr, err = net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", host, c.VControlPort))
-    if err != nil {
-                return
-        }
-    c.VControlConn, err = net.DialUDP("udp", nil, addr)
-    if err != nil {
-                return
-        }
-    if err = c.VControlConn.SetReadBuffer(networkBuffer); err != nil {
-            logger.Printf("udp client video control conn set read buffer error, %v", err)
-    }
-    if err = c.VControlConn.SetWriteBuffer(networkBuffer); err != nil {
-            logger.Printf("udp client video control conn set write buffer error, %v", err)
-    }
-#endif
 
     host.set_port(this->VControlPort);
     Result<UdpSocket> __con = UdpSocket::Connect( host , 0);

@@ -23,14 +23,14 @@ Player* NewPlayer(Session* session , Pusher* pusher)
 
 Player::Player(Session* session , Pusher* pusher) :queue(),cond()
 {
-	auto queueLimit = utils::Conf().Section("rtsp").Key("player_queue_limit").MustInt(0);
+	auto queue_limit = utils::Conf().Section("rtsp").Key("player_queue_limit").MustInt(0);
 	auto ropPacketWhenPaused = utils::Conf().Section("rtsp").Key("drop_packet_when_paused").MustInt(0);
 	
     session = session;
     pusher  = pusher;
     //cond    = sync.NewCond(&sync.Mutex{});
     //queue   = make([]*RTPPack, 0);
-    queueLimit = queueLimit;
+    queueLimit = queue_limit;
     dropPacketWhenPaused = dropPacketWhenPaused != 0;
     paused  = false;
 }
@@ -76,9 +76,9 @@ void Player::Start()
 //			pack = this->queue.front();
 //			this->queue.pop_front();
             auto it = this->queue.begin();
-            // 获取头部元素的值
+            // 锟斤拷取头锟斤拷元锟截碉拷值
             pack = *it;
-            // 移除头部元素
+            // 锟狡筹拷头锟斤拷元锟斤拷
             this->queue.erase(it);
 		}
 		auto queueLen = this->queue.size();

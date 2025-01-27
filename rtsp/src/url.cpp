@@ -6,6 +6,7 @@
 #include <string>
 
 #include "url.h"
+#include "hdlog.h"
 
 
 /**	@fn    parse_rtsp_url 
@@ -21,15 +22,16 @@ int Parse(Slice<char> uri)
 {
 	if (uri.no_legal())
 	{
-		RTSP_ERR("parse_rtsp_url:input parameter is error");
-		return ret;
+		logger::Printf("parse_rtsp_url:input parameter is error");
+		return false;
 	}
 
-    auto Opos = uri.find('?');
-    auto pos = Opos.unwrap_or(uri.size()); 
+    auto pos_opt = uri.find('?');
+    auto pos = pos_opt.unwrap_or(uri.size());
     
     auto base = uri.slice(0, pos).unwrap();
     //auto Oparam = uri.slice(pos+1 );
+    //rtsp://admin:test1357@192.168.10.1:554/asddsa/asdasdsa
 
     auto pos_o = base.find(Slice<char>("://", 3));
     if( pos_o.is_empty() ) {
@@ -42,10 +44,10 @@ int Parse(Slice<char> uri)
         return false;
     }
 
-    auto methd = base.slice( 0, pos).unwrap();
-    base =  base.slice( pos + 3 + 1).unwrap();
+    auto method = base.slice(0, pos).unwrap();
+    base =  base.slice( pos + 3 ).unwrap();
     
-    pos_o = base.find((char) "@");
+    pos_o = base.find('@');
     if( !pos_o.is_empty() )
     {   
         pos =  pos_o.unwrap();
@@ -53,7 +55,7 @@ int Parse(Slice<char> uri)
         base =  base.slice( pos + 1).unwrap();
     }
 
-    pos_o = base.find( (char)"/");;
+    pos_o = base.find( '/');;
     if( !pos_o.is_empty() )
     {
         pos =  pos_o.unwrap();

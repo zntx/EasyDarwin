@@ -35,7 +35,9 @@ if(CONFIG_RTCP_SUPPORT)
     add_definitions( -DRTP_RTCP)
 endif()
 
-add_library(${PROJECT_NAME} STATIC ${SRCS} ${GB28181_SRCS} ${PLAYBACK_SRCS})
+add_library(${PROJECT_NAME} STATIC ${SRCS} ${GB28181_SRCS} ${PLAYBACK_SRCS}
+        src/aaaa.cpp
+        ../standir_dir/include/net/Space.h)
 
 #add_custom_command( TARGET ${PROJECT_NAME} POST_BUILD
 #        COMMAND ${CMAKE_COMMAND} -E copy

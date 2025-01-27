@@ -3,6 +3,7 @@
 #include "pusher.h"
 #include "player.h"
 #include "rtsp-session.h"
+#include "udp-server.h"
 #include "fmt.h"
 #include "hdlog.h"
 #include "comon.h"
@@ -156,7 +157,7 @@ string Pusher::Source()
 
 Pusher* NewClientPusher(RTSPClient* client)
 {
-	pusher = &Pusher{
+    Pusher* pusher = &Pusher{
 		RTSPClient:     client,
 		Session:        nullptr,
 		players:        make(map[string]*Player),
@@ -209,7 +210,7 @@ void Pusher::bindSession(Session* session )
 			return ;
 		}
 		this->ClearPlayer();
-		this->Server()->RemovePusher(this);
+		this->session->Server->RemovePusher(this);
 		this->cond.Broadcast();
 		if (this->UDPServer != nullptr ){
 			this->UDPServer->Stop();

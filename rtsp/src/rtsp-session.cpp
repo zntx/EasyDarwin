@@ -61,7 +61,7 @@ Session::Session( TcpStream& conn) :Conn(std::move(conn) )
 
 string Session::String()
 {
-	return fmt::format("session{}{}[{}][{}][{}]", this->Type, this->TransType, this->Path, this->ID,
+	return fmt::format("session{}{} {}{}{}", this->Type, this->TransType, this->Path, this->ID,
                        this->Conn.peer().unwrap().to_string());
 }
 
@@ -97,43 +97,57 @@ void Session::Start()
 
     char buf[4] = {0};
     Slice<char> buf1(&buf[0], 1);
-    Slice<char> buf2(&buf[1], 2);
+    Slice<char> buf2(&buf[0], 4);
+    Space<char> line = Space<char>::Create(1024);
+    Space<char> reqBuf = Space<char>::Create(5* 1024);
 
     while( !this->Stoped) {
-        auto res = this->Conn.read(buf1);
-        if( res == 0) {
-//            if _, err := io.ReadFull(session.connRW, buf1); err != nullptr {
-//                    logger.Println(session, err)
-//                    return
-//            }
+        auto res = this->Conn.peek(buf1);
+        if( res.is_err()) {
+            logger::Printf(" tcp read fial {}", res.unwrap_err());
+            break;
+        }
+
+        auto len = res.unwrap();
+        if( len == 0 ) {
             continue;
         }
 
-        if (buf1[0] == 0x24) { //rtp data
-            res = this->Conn.read(buf1);
-            if( res == 0) {
-                continue;
+        if (buf[0] == 0x24) { //rtp data
+            auto ret = this->Conn.read(buf2);
+            if( res.is_err()) {
+                logger::Printf(" tcp read fial {}", res.unwrap_err());
+                break;
             }
-            res = this->Conn.read(buf2);
-            if( res == 0) {
-                continue;
+
+            auto read_len = res.unwrap();
+            if( read_len != 4 ) {
+                logger::Printf(" tcp read len {} {}", read_len , 4);
+                break;
             }
-            auto channel = int(buf1[0]);
-            size_t rtpLen = u16::from_be_bytes( buf2[0], buf2[1]).value;
+
+            size_t rtpLen = u16::from_be_bytes( buf2[2], buf2[3]).value;
             auto _rtpBytes = new(std::nothrow) char[rtpLen];
             Slice<char> rtpBytes(_rtpBytes, rtpLen);
 
-            res = this->Conn.read(rtpBytes);
-            if( res == 0)
+            auto ret1 = this->Conn.read(rtpBytes);
+            if( ret1.is_err())
             {
-                logger::info(err);
-                return;
+                logger::Printf(" tcp read fial {}", res.unwrap_err());
+                break;
             }
+
+            auto read_len1 = ret1.unwrap();
+            if( read_len1 != rtpLen ) {
+                logger::Printf(" tcp read len {} {}", read_len1 , rtpLen);
+                break;
+            }
+
             //rtpBuf := bytes.NewBuffer(rtpBytes)
             RTPPack pack = {0, Slice<char>(nullptr, 0)};
             pack.Buffer = rtpBytes;
 
-            if( this->aRTPChannel == channel) {
+            if( this->aRTPChannel == buf[1]) {
                 pack.Type = RTP_TYPE_AUDIO;
 
 //                elapsed := time.Now().Sub(timer)
@@ -143,10 +157,10 @@ void Session::Start()
 //                }
                 break;
             }
-            else if (this->aRTPControlChannel == channel) {
+            else if (this->aRTPControlChannel == buf[1]) {
                 pack.Type = RTP_TYPE_AUDIOCONTROL;
             }
-            else if ( this->vRTPChannel == channel) {
+            else if ( this->vRTPChannel == buf[1]) {
                 pack.Type = RTP_TYPE_VIDEO;
                 //elapsed := time.Now().Sub(timer)
 //                if elapsed >= 30*time.Second {
@@ -154,11 +168,11 @@ void Session::Start()
 //                timer = time.Now()
 //                }
             }
-            else if ( this->vRTPControlChannel == channel) {
+            else if ( this->vRTPControlChannel == buf[1]) {
                 pack.Type = RTP_TYPE_VIDEOCONTROL;
             }
             else {
-                logger::warn("unknow rtp pack type, {}", channel);
+                logger::warn("unknow rtp pack type, {}", buf[1]);
                 continue;
             }
             this->InBytes += rtpLen + 4;
@@ -167,42 +181,63 @@ void Session::Start()
             }
         }
         else { // rtsp cmd
-            reqBuf := bytes.NewBuffer(nullptr)
-            reqBuf.Write(buf1)
-            while( !this->Stoped) {
-                if line, isPrefix, err := this->connRW.ReadLine(); err != nullptr {
-                    logger::Println(err);
-                    return
-                }
-                else {
-                    reqBuf.Write(line)
-                    if !isPrefix {
-                        reqBuf.WriteString("\r\n")
-                    }
-                    if len(line) == 0 {
-                        req := NewRequest(reqBuf.String())
-                        if req == nullptr {
-                            break
-                        }
-                        this->InBytes += reqBuf.Len()
-                        contentLen := req.GetContentLength()
-                        this->InBytes += contentLen
-                        if contentLen > 0 {
-                            bodyBuf := make([]byte, contentLen)
-                            if n, err := io.ReadFull(this->connRW, bodyBuf); err != nullptr {
-                                    logger::Println(err)
-                                    return
-                            } else if n != contentLen {
-                                        logger::Printf("read rtsp request body failed, expect size[%d], got size[%d]", contentLen, n)
-                                        return
-                                }
-                            req.Body = string(bodyBuf)
-                        }
-                        this->handleRequest(req)
-                        break
-                    }
-                }
+//            reqBuf := bytes.NewBuffer(nullptr)
+//            reqBuf.Write(buf1)
+//            if( this->Stoped) {
+//                break;
+//            }
+            line.clear();
+            auto isPrefix_wrap = this->Conn.read_line(line);
+            if (isPrefix_wrap.is_err()) {
+                logger::Printf(" tcp read len {} {}", isPrefix_wrap.unwrap_err() );
+                return ;
             }
+
+            auto lines = line.data( );
+            reqBuf.copy(lines);
+//            if (isPrefix_wrap.unwrap()) {
+//                reqBuf.WriteString("\r\n")
+//            }
+            if ( lines == Slice<char>((char*)"\r\n", 4)) {
+                auto req = NewRequest(reqBuf.to_string( ));
+                if (req == nullptr ){
+                    break;
+                }
+                this->InBytes += reqBuf.len;
+                auto contentLen = req->GetContentLength();
+                this->InBytes += contentLen;
+                if (contentLen > 0) {
+                    //bodyBuf := make([]byte, contentLen)
+                    auto bodyBuf_wrap = reqBuf.to_slice( reqBuf.len);
+                    if( bodyBuf_wrap.is_empty()) {
+                        logger::Printf("bodyBuf failed " );
+                        return ;
+                    }
+
+                    auto bodyBuf = bodyBuf_wrap.unwrap();
+                    if( bodyBuf.size() < contentLen)if( bodyBuf_wrap.is_empty()) {
+                        logger::Printf("not space to save content " );
+                        return ;
+                    }
+
+                    auto result = this->Conn.read(bodyBuf);
+                    if( result.is_err()) {
+
+                        logger::Printf("read fail {}", result.unwrap_err() );
+                        return ;
+                    }
+
+                    auto read_len  = result.unwrap();
+                    if (read_len != contentLen ){
+                        logger::Printf("read rtsp request body failed, expect size[%d], got size[%d]", contentLen, read_len);
+                        return ;
+                    }
+                    req->Body = bodyBuf.slice(0, read_len).unwrap().to_string();
+                }
+                this->handleRequest(req);
+                break;
+            }
+
         }
     }
 }
@@ -408,10 +443,10 @@ void Session::handleRequest(Request *req )
 			addPusher = true;
 		}
 		if( addPusher) {
-			this->Pusher = NewPusher(session);
-			addedToServer := this->Server.AddPusher(this->Pusher);
+			this->Pusher = NewPusher(this);
+			auto addedToServer = this->Server->AddPusher(this->Pusher);
 			if (!addedToServer) {
-				logger.Printf("reject pusher.");
+				logger::Printf("reject pusher.");
 				res->StatusCode = 406;
 				res->Status = "Not Acceptable";
 			}
@@ -436,10 +471,10 @@ void Session::handleRequest(Request *req )
 		}
 		this->Player = NewPlayer(this, pusher);
 		this->Pusher = pusher;
-		this->AControl = pusher.AControl();
-		this->VControl = pusher.VControl();
-		this->ACodec = pusher.ACodec();
-		this->VCodec = pusher.VCodec();
+		this->AControl = pusher->AControl();
+		this->VControl = pusher->VControl();
+		this->ACodec = pusher->ACodec();
+		this->VCodec = pusher->VCodec();
 		this->Conn.timeout = 0;
 		res->SetBody(this->Pusher->SDPRaw());
     }

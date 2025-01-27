@@ -14,14 +14,14 @@ class Pusher;
 
 class Player {
 public:
-	Session *session;
-	Pusher *pusher;
+	Session *session{};
+	Pusher *pusher{};
 private:
 	//*sync.Cond cond ;
     mutex cond;  
 	//queue  []*RTPPack;
     list<RTPPack*> queue;
-	int queueLimit ;
+	int queueLimit{} ;
 	bool dropPacketWhenPaused; 
 	bool paused ;
 

@@ -4,20 +4,20 @@
 #include "udp-server.h"
 #include "utils.h"
 
-void UDPServer::AddInputBytes(int bytes )
+void UDPServer::AddInputBytes(int bytes ) const
 {
 	if (this->session != nullptr ){
 		this->session->InBytes += bytes;
 		return ;
 	}
 	if (this->rtspClient != nullptr) {
-            this->rtspClient->InBytes += bytes)
+            this->rtspClient->InBytes += bytes;
 		return ;
 	}
 	//panic(fmt.Errorf("session and RTSPClient both nullptr"));
 }
 
-void UDPServer::HandleRTP(RTPPack* pack)
+void UDPServer::HandleRTP(RTPPack* pack) const
 {
 	if (this->session != nullptr) {
 		for( const auto& v : this->session->RTPHandles ){
@@ -35,15 +35,6 @@ void UDPServer::HandleRTP(RTPPack* pack)
 	//panic(fmt.Errorf("session and RTSPClient both nullptr"))
 }
 
-//func (s *UDPServer) Logger() *log.Logger {
-//	if s.Session != nullptr {
-//		return s.Session.logger
-//	}
-//	if s.RTSPClient != nullptr {
-//		return s.RTSPClient.logger
-//	}
-//	panic(fmt.Errorf("session and RTSPClient both nullptr"))
-//}
 
 void UDPServer::Stop()
 {
@@ -69,261 +60,142 @@ void UDPServer::Stop()
 //	}
 }
 
-Result<void> UDPServer::SetupAudio()
+
+Result<void> UDPServer::Setup(int _type)
 {
-    {
-        auto usocket_wrap = UdpSocket::Bind("0.0.0.0", 0);
-        if (usocket_wrap.is_err()) {
-            return Err(usocket_wrap.unwrap_err());
-        }
-        auto usocket = usocket_wrap.unwrap();
-        auto networkBuffer = utils::Conf().Section("rtsp").Key("network_buffer").MustInt(1048576);
+    auto socket_wrap = UdpSocket::Bind("0.0.0.0", 0);
+    if (socket_wrap.is_err()) {
+        return Err(socket_wrap.unwrap_err());
+    }
+    auto udp_socket = socket_wrap.unwrap();
+    auto networkBuffer = utils::Conf().Section("rtsp").Key("network_buffer").MustInt(1048576);
 
-        if (!usocket.SetSoRcvbuf(networkBuffer)) {
-            logger::Printf("udp server audio conn set read buffer error,");
-        }
-        if (!usocket.SetSoSendbuf(networkBuffer)) {
-            logger::Printf("udp server audio conn set write buffer error, ");
-        }
+    if (!udp_socket.SetSoRcvbuf(networkBuffer)) {
+        logger::Printf("udp server audio conn set read buffer error,");
+    }
+    if (!udp_socket.SetSoSendbuf(networkBuffer)) {
+        logger::Printf("udp server audio conn set write buffer error, ");
+    }
 
-        auto port_wrap = usocket.local_port();
-        if (port_wrap.is_err()) {
-            return Err(port_wrap.unwrap_err());
-        }
+    auto port_wrap = udp_socket.local_port();
+    if (port_wrap.is_err()) {
+        return Err(port_wrap.unwrap_err());
+    }
 
+    if( _type == RTP_TYPE_AUDIO) {
         this->APort = port_wrap.unwrap();
-        this->AConn = Some(usocket);
+    }
+    else if (_type == RTP_TYPE_AUDIOCONTROL) {
+        this->AControlPort = port_wrap.unwrap();
+    }
+    else if (_type == RTP_TYPE_VIDEO){
+        this->VPort = port_wrap.unwrap();
+    }
+    else if (_type == RTP_TYPE_VIDEOCONTROL) {
+        this->VControlPort = port_wrap.unwrap();
+    }
+    else {
+        logger::Printf("udp server support error, ");
+        return Err(string("not support "));
+    }
 
-        thread([&]() {
-            //bufUDP := make([]byte, UDP_BUF_SIZE)
-            Space<char> bufUDP = Space<char>::Create(UDP_BUF_SIZE);
-            if (bufUDP.no_legal()) {
-                return;
-            }
+    thread stream([&](UdpSocket&& socket) {
+        Space<char> bufUDP = Space<char>::Create(UDP_BUF_SIZE);
+        if (bufUDP.no_legal()) {
+            return Err(string("no memory"));
+        }
 
+        if( _type == RTP_TYPE_AUDIO) {
             logger::Printf("udp server start listen audio port{%d}", this->APort);
-            //defer logger.Printf("udp server stop listen audio port[%d]", s.APort)
-            auto timer = chrono::system_clock::now();
-            while (!this->Stoped) {
-                int n = 0;
-                auto addr_wrap = this->AConn.ReadFromUDP(bufUDP, n);
+        }
+        else if (_type == RTP_TYPE_AUDIOCONTROL) {
+            logger::Printf("udp server start listen audio port{%d}", this->AControlPort);
+        }
+        else if (_type == RTP_TYPE_VIDEO){
+            logger::Printf("udp server start listen video port{%d}", this->VPort);
+        }
+        else if (_type == RTP_TYPE_VIDEOCONTROL) {
+            logger::Printf("udp server start listen video port{%d}", this->VControlPort);
+        }
+        //defer logger.Printf("udp server stop listen audio port[%d]", s.APort)
+        auto timer = chrono::system_clock::now();
+        while (!this->Stoped) {
+            int n = 0;
+            auto addr_wrap = socket.ReadFromUDP(bufUDP, n);
 
-                if (addr_wrap.is_ok() && n > 0) {
+            if (addr_wrap.is_ok() && n > 0) {
+
+                if (_type == RTP_TYPE_AUDIO || _type == RTP_TYPE_VIDEO) {
                     auto elapsed = chrono::system_clock::now() - timer;
                     if (elapsed >= chrono::seconds(30)) {
-                        logger::Printf("Package recv from AConn.len:{%d}\n", n);
+                        logger::Printf("Package recv from AConn.len:{:d}\n", n);
                         timer = chrono::system_clock::now();
                     }
-                    char *rtpBytes = new(std::nothrow) char[n];
-                    if (rtpBytes == nullptr) {
-                        break;
-                    }
-                    Slice<char> rtp_bytes(rtpBytes, n);
-                    this->AddInputBytes(n);
-
-                    for (std::size_t i = 0; i < n; i++) {
-                        rtp_bytes.set(i, bufUDP[i]);
-                    }
-
-                    RTPPack *pack = new(std::nothrow) RTPPack;
-                    pack->Type = RTP_TYPE_AUDIO;
-                    pack->Buffer = rtp_bytes;
-
-                    this->HandleRTP(pack);
-                } else {
-                    logger::Printf("udp server read audio pack error {}", addr_wrap.unwrap_err());
-                    continue;
                 }
-            }
 
+                char *rtpBytes = new(std::nothrow) char[n];
+                if (rtpBytes == nullptr) {
+                    break;
+                }
+                this->AddInputBytes(n);
+
+                for (std::size_t i = 0; i < n; i++) {
+                    *(rtpBytes + i) = bufUDP[i];
+                }
+
+                auto *pack = new(std::nothrow) RTPPack{ RTP_TYPE_AUDIO,  Slice<char>(rtpBytes, n)};
+
+                this->HandleRTP(pack);
+            }
+            else {
+                logger::Printf("udp server read  pack error {}", addr_wrap.unwrap_err());
+                continue;
+            }
+        }
+
+        if( _type == RTP_TYPE_AUDIO) {
             logger::Printf("udp server stop listen audio port{%d}", this->APort);
-        }).detach();
-    }
-
-    {
-        auto usocket_wrap = UdpSocket::Bind("0.0.0.0", 0);
-        if (usocket_wrap.is_err()) {
-            return Err(usocket_wrap.unwrap_err());
         }
-        auto usocket = usocket_wrap.unwrap();
-        auto networkBuffer = utils::Conf().Section("rtsp").Key("network_buffer").MustInt(1048576);
-
-        if (!usocket.SetSoRcvbuf(networkBuffer)) {
-            logger::Printf("udp server audio conn set read buffer error,");
+        else if (_type == RTP_TYPE_AUDIOCONTROL) {
+            logger::Printf("udp server stop listen audio port{%d}", this->AControlPort);
         }
-        if (!usocket.SetSoSendbuf(networkBuffer)) {
-            logger::Printf("udp server audio conn set write buffer error, ");
+        else if (_type == RTP_TYPE_VIDEO){
+            logger::Printf("udp server stop listen video port{%d}", this->VPort);
         }
-
-        auto port_wrap = usocket.local_port();
-        if (port_wrap.is_err()) {
-            return Err(port_wrap.unwrap_err());
+        else if (_type == RTP_TYPE_VIDEOCONTROL) {
+            logger::Printf("udp server stop listen video port{%d}", this->VControlPort);
         }
-        this->AControlPort = port_wrap.unwrap();
+    }, std::move(udp_socket) );
+    stream.detach();
 
-        thread([&]() {
-            Space<char> bufUDP = Space<char>::Create(UDP_BUF_SIZE);
-            if (bufUDP.no_legal()) {
-                return;
-            }
-            logger::Printf("udp server start listen audio control port{%d}", this->AControlPort);
-            //defer logger::Printf("udp server stop listen audio control port[%d]", s.AControlPort);
-            while(!this->Stoped) {
-                int n = 0;
-                auto addr_wrap = this->AConn.ReadFromUDP(bufUDP, n);
+    return Ok();
+}
 
-                if (addr_wrap.is_ok() && n > 0) {
-                    //logger.Printf("Package recv from AControlConn.len:%d\n", n)
-                    char *rtpBytes = new(std::nothrow) char[n];
-                    if (rtpBytes == nullptr) {
-                        break;
-                    }
-                    Slice<char> rtp_bytes(rtpBytes, n);
-                    this->AddInputBytes(n);
 
-                    for (std::size_t i = 0; i < n; i++) {
-                        rtp_bytes.set( i, bufUDP[i]);
-                    }
-                    RTPPack *pack = new(std::nothrow) RTPPack;
-                    pack->Type = RTP_TYPE_AUDIO;
-                    pack->Buffer = rtp_bytes;
+Result<void> UDPServer::SetupAudio()
+{
+    auto result = this->Setup(RTP_TYPE_AUDIO);
+    if( result.is_err())
+        return result;
 
-                    this->HandleRTP(pack);
-                }
-                else {
-                    logger::Printf("udp server read audio control pack error", addr_wrap.unwrap_err());
-                    continue;
-                }
-            }
-        }).detach();
-    }
+    auto result2 = this->Setup(RTP_TYPE_AUDIOCONTROL);
+    if( result2.is_err())
+        return result2;
+
 	return Ok();
 }
 
 Result<void> UDPServer::SetupVideo()
 {
-    auto usocket_wrap = UdpSocket::Bind("0.0.0.0", 0);
-    if (usocket_wrap.is_err()) {
-        return Err(usocket_wrap.unwrap_err());
-    }
-    auto usocket = usocket_wrap.unwrap();
-    auto networkBuffer = utils::Conf().Section("rtsp").Key("network_buffer").MustInt(1048576);
+    auto result = this->Setup(RTP_TYPE_VIDEO);
+    if( result.is_err())
+        return result;
 
-    if (!usocket.SetSoRcvbuf(networkBuffer)) {
-        logger::Printf("udp server video conn set read buffer error,");
-    }
-    if (!usocket.SetSoSendbuf(networkBuffer)) {
-        logger::Printf("udp server video conn set write buffer error, ");
-    }
+    auto result2 = this->Setup(RTP_TYPE_VIDEOCONTROL);
+    if( result2.is_err())
+        return result2;
 
-    auto port_wrap = usocket.local_port();
-    if (port_wrap.is_err()) {
-        return Err(port_wrap.unwrap_err());
-    }
-    this->VPort = port_wrap.unwrap();
-
-    thread([&]() {
-        Space<char> bufUDP = Space<char>::Create(UDP_BUF_SIZE);
-        if (bufUDP.no_legal()) {
-            return;
-        }
-        logger::Printf("udp server start listen audio  port{%d}", this->AControlPort);
-        //defer logger::Printf("udp server stop listen audio control port[%d]", s.AControlPort);
-        auto timer = chrono::system_clock::now();
-
-        while(!this->Stoped) {
-            int n = 0;
-            auto addr_wrap = this->AConn.ReadFromUDP(bufUDP, n);
-            if (addr_wrap.is_ok() && n > 0) {
-				auto elapsed =  chrono::system_clock::now() - timer;
-				if (elapsed >= chrono::seconds(30) ){
-					logger::Printf("Package recv from VConn.len:{:d}\n", n);
-					timer = chrono::system_clock::now();
-				}
-                char *rtpBytes = new(std::nothrow) char[n];
-                if (rtpBytes == nullptr) {
-                    break;
-                }
-                Slice<char> rtp_bytes(rtpBytes, n);
-				this->AddInputBytes(n);
-
-                for (std::size_t i = 0; i < n; i++) {
-                    rtp_bytes.set( i, bufUDP[i]);
-                }
-                RTPPack *pack = new(std::nothrow) RTPPack;
-                pack->Type =   RTP_TYPE_VIDEO;
-                pack->Buffer = rtp_bytes;
-
-				this->HandleRTP(pack);
-			}
-            else {
-				logger::Printf("udp server read video pack error", addr_wrap.unwrap_err());
-				continue;
-			}
-		}
-	}).detach();
-
-    {
-        auto usocket_wrap = UdpSocket::Bind("0.0.0.0", 0);
-        if (usocket_wrap.is_err()) {
-            return Err(usocket_wrap.unwrap_err());
-        }
-        auto usocket = usocket_wrap.unwrap();
-        auto networkBuffer = utils::Conf().Section("rtsp").Key("network_buffer").MustInt(1048576);
-
-        if (!usocket.SetSoRcvbuf(networkBuffer)) {
-            logger::Printf("udp server video control conn set read buffer error, ");
-        }
-        if (!usocket.SetSoSendbuf(networkBuffer)) {
-            logger::Printf("udp server video control conn set write buffer error, ");
-        }
-
-        auto port_wrap = usocket.local_port();
-        if (port_wrap.is_err()) {
-            return Err(port_wrap.unwrap_err());
-        }
-        this->VControlPort = port_wrap.unwrap();
-
-        thread( [&](){
-            Space<char> bufUDP = Space<char>::Create(UDP_BUF_SIZE);
-            if (bufUDP.no_legal()) {
-                return;
-            }
-            logger::Printf("udp server start listen video control port{:d}", this->VControlPort);
-
-            while(!this->Stoped) {
-                int n = 0;
-                auto addr_wrap = this->AConn.ReadFromUDP(bufUDP, n);
-                if (addr_wrap.is_ok() && n > 0) {
-                    //logger.Printf("Package recv from VControlConn.len:%d\n", n)
-                    char *rtpBytes = new(std::nothrow) char[n];
-                    if (rtpBytes == nullptr) {
-                        break;
-                    }
-                    Slice<char> rtp_bytes(rtpBytes, n);
-
-                    this->AddInputBytes(n);
-
-                    for (std::size_t i = 0; i < n; i++) {
-                        rtp_bytes.set( i, bufUDP[i]);
-                    }
-                    RTPPack *pack = new(std::nothrow) RTPPack;
-                    pack->Type =   RTP_TYPE_VIDEOCONTROL;
-                    pack->Buffer = rtpBytes;
-
-                    this->HandleRTP(pack);
-                }
-                else {
-                    logger::Printf("udp server read video control pack error", addr_wrap.unwrap_err());
-                    continue;
-                }
-            }
-
-
-            logger::Printf("udp server stop listen video control port{:d}", this->VControlPort);
-        }).detach();
-    }
-	return Ok();
+    return Ok();
 }
 
 
