@@ -26,9 +26,9 @@ map<string, SDPInfo>  ParseSDP(string sdpRaw)
 	map<string, SDPInfo>  sdpMap ;
 	SDPInfo* info;
 
-    auto lines =  StringSplit( sdpRaw, "\n");
+    auto lines = string_Split(sdpRaw, "\n");
 	for ( auto & line : lines) {
-		StringTrim(line);
+        string_Trim(line);
 
         string key;
         string value;
@@ -47,7 +47,7 @@ map<string, SDPInfo>  ParseSDP(string sdpRaw)
 						sdpMap[item1] = SDPInfo{AVType: item1};
 						info = &sdpMap[item1];
 
-						auto mfields = StringSplit(item2, " ");
+						auto mfields = string_Split(item2, " ");
 						if (mfields.size() >= 3) {
 							info.PayloadType = strconv.Atoi(mfields[2]);
 						}

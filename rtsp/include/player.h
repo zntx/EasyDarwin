@@ -33,4 +33,6 @@ public:
     void Pause(bool paused);
 };
 
+Player* NewPlayer(Session* session , Pusher* pusher);
+
 #endif

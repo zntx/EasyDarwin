@@ -1,6 +1,6 @@
 
 #include "ini.hpp"
-
+#include "net.h"
 
 class Program  {
 private:	
@@ -10,10 +10,10 @@ private:
 	rtsp::Server* rtspServer;
 
 public:
-	err  StopHTTP() {
+	Result<void>  StopHTTP() {
 		if (this->httpServer == nullptr) {
-			err = fmt.Errorf("HTTP Server Not Found")
-			return
+			err = fmt.Errorf("HTTP Server Not Found");
+			return ;
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -23,7 +23,7 @@ public:
 		return ;
 	}
 
-	err StartHTTP() {
+	Result<void> StartHTTP() {
 		this->httpServer = new http::Server{
 			Addr:              fmt.Sprintf(":%d", p.httpPort),
 			Handler:           routers.Router,
@@ -40,10 +40,9 @@ public:
 		return
 	}
 
-	err StartRTSP() {
+	Result<void> StartRTSP() {
 		if (this->rtspServer == nullptr) {
-			err = fmt.Errorf("RTSP Server Not Found")
-			return
+			return Err(string("RTSP Server Not Found"));
 		}
 		sport := ""
 		if this->rtspPort != 554 {
@@ -57,7 +56,7 @@ public:
 			}
 			log.Println("rtsp server end")
 		}()
-		return
+		return Ok();
 	}
 
 	void StopRTSP()  {
@@ -69,7 +68,7 @@ public:
 		return;
 	}
 
-	err Start(s service.Service)  {
+	Result<void> Start(s service.Service)  {
 		log.Println("********** START **********");
 		if utils.IsPortInUse(p.httpPort) {
 			err = fmt.Errorf("HTTP port[%d] In Use", p.httpPort)
@@ -144,7 +143,7 @@ public:
 		return ;
 	}
 
-	err Stop(service.Service s )  {
+	Result<void> Stop(service.Service s )  {
 
 		this->StopHTTP();
 		this->StopRTSP();
@@ -156,7 +155,8 @@ public:
 	}
 };
 
-void main() {
+void main() 
+{
 	flag.StringVar(&utils.FlagVarConfFile, "config", "", "configure file path")
 	flag.Parse()
 	tail := flag.Args()

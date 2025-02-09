@@ -31,6 +31,7 @@ public:
     Server*      Server;
     //            Conn      *RichConn
     TcpStream Conn;
+    time_t timeout;
     //            connRW    *bufio.ReadWriter
     //            connWLock sync.RWMutex
     SessionType  Type;

@@ -12,6 +12,8 @@
 #include "pusher.h"
 #include "ini.hpp"
 #include "fmt.h"
+#include "Digest.h"
+#include "stringExtend.h"
 
 
 Session* NewSession(Server* server, TcpStream conn )
@@ -307,6 +309,9 @@ RtspErr CheckAuth(string authLine , string method , string sessionNonce )
 	return nullptr
 }
 #endif
+
+
+
 void Session::handleRequest(Request *req ) 
 {
 	//if this->Timeout > 0 {
@@ -356,15 +361,16 @@ void Session::handleRequest(Request *req )
 #endif
 	if (req->Method != "OPTIONS") {
 		if (this->authorizationEnable) {
-			auto authLine = req->Header["Authorization"];
+			auto authLine = req->Header.find("Authorization");
 			auto authFailed = true;
-			if (authLine != "" ){
-				err := CheckAuth(authLine, req->Method, this->nonce)
-				if (err == nullptr) {
+			if (authLine != req->Header.end() && authLine->second != "" ){
+				//auto err = CheckAuth(authLine->second, req->Method, this->nonce);
+                auto err = Digest::Check(authLine->second, "test1357", this->Method);
+				if (!err ) {
 					authFailed = false;
 				}
                 else {
-					logger::info("%v", err);
+					logger::info("{}", err);
 				}
 			}
 			if (authFailed ){
@@ -372,7 +378,7 @@ void Session::handleRequest(Request *req )
 				res->Status = "Unauthorized";
 				auto nonce = fmt::format("{:x}", md5.Sum([]byte(shortid.MustGenerate())));
 				this->nonce = nonce;
-				res->Header["WWW-Authenticate"] = fmt::format(`Digest realm="EasyDarwin", nonce="%s", algorithm="MD5"`, nonce);
+				res->Header["WWW-Authenticate"] = fmt::format("Digest realm=\"EasyDarwin\", nonce=\"%s\", algorithm=\"MD5\"", nonce);
 				return ;
 			}
 		}
@@ -385,13 +391,14 @@ void Session::handleRequest(Request *req )
 		this->Type = SessionType::SESSION_TYPE_PUSHER;
 		this->URL = req->URL;
 
-		url, err := url.Parse(req.URL)
-		if err != nullptr {
+		auto url_wrap= Url::Parse(req->URL);
+		if (url_wrap.is_err())  {
 			res->StatusCode = 500;
 			res->Status = "Invalid URL";
 			return ;
 		}
-		this->Path = url.Path ;
+        auto url = url_wrap.unwrap();
+		this->Path = url.Path() ;
 
 		this->SDPRaw = req->Body ;
 		this->SDPMap = ParseSDP(req->Body);
@@ -411,15 +418,15 @@ void Session::handleRequest(Request *req )
 		if (this->closeOld) {
 			r, _ := this->Server.TryAttachToPusher(session);
 			if( r < -1 ){
-				logger.Printf("reject pusher.");
-				res.StatusCode = 406;
-				res.Status = "Not Acceptable";
+				logger::Printf("reject pusher.");
+				res->StatusCode = 406;
+				res->Status = "Not Acceptable";
 			}
             else if( r == 0 ){
 				addPusher = true;
 			}
             else {
-				logger.Printf("Attached to old pusher");
+				logger::Printf("Attached to old pusher");
 				// 尝试发给客户端ANNOUCE
 				// players := pusher.GetPlayers()
 				// for _, v := range players {
@@ -475,11 +482,11 @@ void Session::handleRequest(Request *req )
 		this->VControl = pusher->VControl();
 		this->ACodec = pusher->ACodec();
 		this->VCodec = pusher->VCodec();
-		this->Conn.timeout = 0;
+		this->timeout = 0;
 		res->SetBody(this->Pusher->SDPRaw());
     }
 	else if( req->Method == "SETUP"  ) {
-		ts := req->Header["Transport"];
+		auto ts = req->Header.find("Transport");
 		// control字段可能是`stream=1`字样，也可能是rtsp://...字样。即control可能是url的path，也可能是整个url
 		// 例1：
 		// a=control:streamid=1
@@ -507,7 +514,7 @@ void Session::handleRequest(Request *req )
 		}
 		//setupPath = setupPath[strings.LastIndex(setupPath, "/")+1:]
 		string vPath  ;
-		if (strings.Index(strings.ToLower(this->VControl), "rtsp://") == 0 ){
+		if (string_start_with(string_ToLower(this->VControl), "rtsp://") == 0 ){
 			auto vControlUrl_err = Url::Parse(this->VControl);
 			if (vControlUrl_err.is_err()){
 				res->StatusCode = 500;
@@ -525,7 +532,7 @@ void Session::handleRequest(Request *req )
 		}
 
         string aPath;
-		if (strings.Index(strings.ToLower(this->AControl), "rtsp://") == 0 ){
+		if (string_start_with(string_ToLower(this->AControl), "rtsp://") == 0 ){
 			auto aControlUrl_err = Url::Parse(this->AControl);
 			if( aControlUrl_err.is_err()){
 				res->StatusCode = 500;

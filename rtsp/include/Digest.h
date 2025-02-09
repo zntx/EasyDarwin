@@ -15,13 +15,15 @@ public:
     ~Digest();
 
     static Digest* From(const string& str);
-    void setNamePasswd(const string& _name, const string& _passwd);
+    void set_Name_Passwd(const string& _name, const string& _passwd);
+    void set_name( const string& _name);
+    void set_passwd( const string& _passwd);
     string response(const string& uri,  const string& method);
 
 
     string to_string(const string& uri,  const string& method);
 
-    static bool From(const string& str,  const string& passwd,  const string& method);
+    static bool Check(const string& str,  const string& passwd,  const string& method);
 
 
 private:

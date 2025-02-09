@@ -8,10 +8,9 @@
 #include <string>
 #include <sstream>
 #include "Digest.h"
-//#include "rtspdbg.h"
-//#include "authentication.h"
 #include "hdlog.h"
 #include "MD5.h"
+#include "stringExtend.h"
 
 
 #define HASHLEN 16
@@ -80,7 +79,6 @@ Digest::~Digest()
 
 Digest* Digest::From(const string& str )
 {
-    vector<string> strList;
     auto* digest = new (std::nothrow) Digest;
 
     string type;
@@ -90,7 +88,7 @@ Digest* Digest::From(const string& str )
     std::cout << "type" << type << " " << std::endl;
     std::cout << "attr" << attr << " " << std::endl;
 
-    StringSplit(attr, ",", strList);
+    auto strList = string_Split(attr, ",");
 
     for (const auto& s : strList)
     {
@@ -106,11 +104,11 @@ Digest* Digest::From(const string& str )
 
         if( key == "realm")
         {
-            digest->realm = trim(value, "\"");
+            digest->realm = string_Trim(value, "\"");
         }
         else if( key == "nonce")
         {
-            digest->nonce = trim(value, "\"");
+            digest->nonce = string_Trim(value, "\"");
         }
         else if( key == "stale")
         {
@@ -125,12 +123,20 @@ Digest* Digest::From(const string& str )
     return digest;
 }
 
-void Digest::setNamePasswd(const string& _name, const string& _passwd)
+void Digest::set_Name_Passwd(const string& _name, const string& _passwd)
 {
     this->name = _name;
     this->passwd = _passwd;
 }
 
+void Digest::set_name( const string& _name)
+{
+    this->name = _name;
+}
+void Digest::set_passwd( const string& _passwd)
+{
+    this->passwd = _passwd;
+}
 
 string Digest::response(const string& uri, const string& method)
 {
@@ -161,14 +167,13 @@ string Digest::to_string(const string& method, const string& uri)
     return tmp;
 }
 
-bool Digest::From(const string& str,  const string& passwd,  const string& method)
+bool Digest::Check(const string& str,  const string& passwd,  const string& method)
 {
-    vector<string> strList;
     string response;
     string uri;
     Digest digest;
 
-    StringSplit(str, ",", strList);
+    auto strList = string_Split(str, ",");
 
     for (const auto& s : strList)
     {
@@ -216,7 +221,7 @@ bool Digest::From(const string& str,  const string& passwd,  const string& metho
          * */
     }
 
-    digest.setNamePasswd("", passwd);
+    digest.set_passwd( passwd);
 
     auto _response = digest.response(uri, method);
 

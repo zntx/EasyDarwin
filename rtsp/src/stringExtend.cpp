@@ -5,7 +5,7 @@
 #include <algorithm>
 #include "stringExtend.h"
 
-std::string& StringTrim(std::string &s, const string& split)
+std::string& string_Trim(std::string &s, const string& split)
 {
     if (s.empty())
     {
@@ -18,7 +18,7 @@ std::string& StringTrim(std::string &s, const string& split)
 }
 
 // 使用字符分割
-vector<string> StringSplit(const string& str, const char split )
+vector<string> string_Split(const string& str, const char split )
 {
     vector<string> res;
 
@@ -32,7 +32,7 @@ vector<string> StringSplit(const string& str, const char split )
     while (pos != std::string::npos)
     {
         string temp = strs.substr(0, pos);
-        StringTrim(temp);
+        string_Trim(temp);
         res.push_back(temp);
         //去掉已分割的字符串,在剩下的字符串中进行分割
         strs = strs.substr(pos + 1, strs.size());
@@ -42,7 +42,7 @@ vector<string> StringSplit(const string& str, const char split )
     return res;
 }
 // 使用字符串分割
-vector<string> StringSplit(const string& str, const string& splits )
+vector<string> string_Split(const string& str, const string& splits )
 {
     vector<string> res;
 
@@ -57,7 +57,7 @@ vector<string> StringSplit(const string& str, const string& splits )
     while (pos != strs.npos)
     {
         string temp = strs.substr(0, pos);
-        StringTrim(temp);
+        string_Trim(temp);
         res.push_back(temp);
         //去掉已分割的字符串,在剩下的字符串中进行分割
         strs = strs.substr(pos + step, strs.size());
@@ -137,4 +137,10 @@ string& string_ToLower( std::string& str)
     std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) { return std::tolower(c); });
     //std::cout << "Lowercase string: " << str << std::endl;
     return str;
+}
+
+bool string_start_with(const std::string& str, const std::string& prefix)
+{
+    return str.size() >= prefix.size() &&
+           str.compare(0, prefix.size(), prefix) == 0;
 }
