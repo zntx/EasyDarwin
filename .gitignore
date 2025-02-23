@@ -21,4 +21,6 @@ debug.ini
 build/
 cmake-build-debug/
 standir_dir/
+vendor/
+standir_dir/lib/
 

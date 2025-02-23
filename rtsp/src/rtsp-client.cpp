@@ -107,13 +107,13 @@ Result<string> RTSPClient::checkAuth(string method, Response* resp)
 		if ok {
 			for( _, authLine := range auths) {
 
-				if strings.IndexAny(authLine, "Digest") == 0 {
+				if (strings.IndexAny(authLine, "Digest")) == 0 {
 					// 					realm="HipcamRealServer",
 					// nonce="3b27a446bfa49b0c48c3edb83139543d"
 					this->authLine = authLine
 					return DigestAuth(authLine, method, this->URL)
 				}
-                else if strings.IndexAny(authLine, "Basic") == 0 {
+                else if (strings.IndexAny(authLine, "Basic") == 0) {
 					// not support yet
 					// TODO..
 				}
@@ -123,11 +123,11 @@ Result<string> RTSPClient::checkAuth(string method, Response* resp)
 		}
         else {
 			authLine, _ := AuthHeaders.(string)
-			if strings.IndexAny(authLine, "Digest") == 0 {
+			if (strings.IndexAny(authLine, "Digest") == 0 ){
 				this->authLine = authLine
 				return DigestAuth(authLine, method, this->URL)
 			}
-            else if strings.IndexAny(authLine, "Basic") == 0 {
+            else if (strings.IndexAny(authLine, "Basic") == 0 ){
 				// not support yet
 				// TODO..
 				return Err(string("not support Basic auth yet"));

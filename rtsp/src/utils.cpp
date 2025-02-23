@@ -15,13 +15,13 @@ utils::utils(const std::string &configFileName) :ini( configFileName)
 
 std::string utils::RandomNumber()
 {
-    // Ñ¡ÔñËæ»úÊıÒıÇæ£¬ÕâÀïÊ¹ÓÃ mt19937
+    // é€‰æ‹©éšæœºæ•°å¼•æ“ï¼Œè¿™é‡Œä½¿ç”¨ mt19937
     std::mt19937 engine(std::random_device{}());
 
-    // Éú³ÉÒ»¸ö·¶Î§ÔÚ [1, 100] µÄ¾ùÔÈ·Ö²¼µÄÕûÊı
+    // ç”Ÿæˆä¸€ä¸ªèŒƒå›´åœ¨ [1, 100] çš„å‡åŒ€åˆ†å¸ƒçš„æ•´æ•°
     std::uniform_int_distribution<int> dist(1, 1000);
 
-    // Éú³ÉËæ»úÊı
+    // ç”Ÿæˆéšæœºæ•°
     int randomNumber = dist(engine);
     std::cout << "Random integer in [1, 100]: " << randomNumber << std::endl;
 

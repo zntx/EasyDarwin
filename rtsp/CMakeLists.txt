@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED  ON)
 
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
-include_directories(${CMAKE_SOURCE_DIR}/standir_dir/include)
+include_directories(${CMAKE_SOURCE_DIR}/staging_dir/include)
 include_directories(${CMAKE_SOURCE_DIR}/vendor)
 #SET( SRCS protocol/rtp/rtcpPacket.cpp )
 
@@ -35,9 +35,7 @@ if(CONFIG_RTCP_SUPPORT)
     add_definitions( -DRTP_RTCP)
 endif()
 
-add_library(${PROJECT_NAME} STATIC ${SRCS} ${GB28181_SRCS} ${PLAYBACK_SRCS}
-        src/aaaa.cpp
-        ../standir_dir/include/net/Space.h)
+add_library(${PROJECT_NAME} STATIC ${SRCS} ${GB28181_SRCS} ${PLAYBACK_SRCS} )
 
 #add_custom_command( TARGET ${PROJECT_NAME} POST_BUILD
 #        COMMAND ${CMAKE_COMMAND} -E copy

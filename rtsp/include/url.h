@@ -14,16 +14,19 @@
 using namespace std;
 
 class Url{
-    Slice<char> mothed;
-    Slice<char> name;
-    Slice<char> passwd;
-    Slice<char> host;
-    uint16_t    port;
-    Slice<char> path;
+    Slice<char> mothed = {nullptr, 0};
+    Slice<char> name= {nullptr, 0};
+    Slice<char> passwd= {nullptr, 0};
+    Slice<char> host= {nullptr, 0};
+    uint16_t    port = 0;
+    Slice<char> path = {nullptr, 0};
+    Slice<char> param = {nullptr, 0};
 
-    Slice<char> url;
+    Slice<char> url= {nullptr, 0};
 public:
     static Result<Url> Parse(string uri);
+    static Result<Url> Parse(Slice<char>& uri);
+
 
     uint64_t Port();
     string Method();

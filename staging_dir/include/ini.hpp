@@ -71,7 +71,6 @@ public:
 
 namespace inicpp
 {
-
     typedef struct KeyValueNode
     {
         std::string Value = "";
@@ -175,6 +174,28 @@ namespace inicpp
         {
             return value;
         }
+
+        const std::string& MustString( const std::string &_value)
+        {
+            if(this->value.size() == 0 )
+            {
+                return _value;
+            }
+
+            return value;
+        }
+
+        int MustInt(int _default)
+        {
+            if(this->value.size() == 0 )
+            {
+                return _default;
+            }
+
+            return this->as<int>();;
+        }
+
+
     };
 
     class section
@@ -341,6 +362,15 @@ namespace inicpp
             return ValueProxy(_sectionMap[Key].Value);
         }
 
+        ValueProxy Key(const std::string &Key)
+        {
+            if (!_sectionMap.count(Key))
+            {
+                return ValueProxy( std::string(""));
+            }
+            return ValueProxy(_sectionMap[Key].Value);
+        }
+
     private:
         std::string _sectionName;
         std::map<std::string, KeyValueNode> _sectionMap;
@@ -389,6 +419,15 @@ namespace inicpp
                 sectionList.emplace_back(data.first);
             }
             return sectionList;
+        }
+
+        const section Section(const std::string &sectionName)
+        {
+            if (!_iniInfoMap.count(sectionName))
+            {
+                return _iniInfoMap[""];
+            }
+            return _iniInfoMap[sectionName];
         }
 
         const section &operator[](const std::string &sectionName)
@@ -456,6 +495,11 @@ namespace inicpp
         }
 
         section operator[](const std::string &sectionName)
+        {
+            return _iniData[sectionName];
+        }
+
+        section Section(const std::string &sectionName)
         {
             return _iniData[sectionName];
         }

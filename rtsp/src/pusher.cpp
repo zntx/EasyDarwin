@@ -77,9 +77,9 @@ string Pusher::VCodec()  {
 string Pusher::ACodec()
 {
 	if (this->session != nullptr ){
-		return this->session.ACodec;
+		return this->session->ACodec;
 	}
-	return this->rtspClient.ACodec;
+	return this->rtspClient->ACodec;
 }
 
 string Pusher::AControl()
@@ -199,14 +199,14 @@ void Pusher::bindSession(Session* session )
 	this->session = session;
 	session->RTPHandles.emplace_back( [&](RTPPack *pack) {
 		if (session != this->session) {
-			logger::Printf("Session recv rtp to this->but pusher got a new session{}.", this->session->ID);
+			logger::info("Session recv rtp to this->but pusher got a new session{}.", this->session->ID);
 			return ;
 		}
 		this->QueueRTP(pack);
 	});
 	session->StopHandles.emplace_back( [&]() {
 		if (session != this->session) {
-			logger::Printf("Session stop to release this->but pusher got a new session[%v].", this->session->ID);
+			logger::info("Session stop to release this->but pusher got a new session[%v].", this->session->ID);
 			return ;
 		}
 		this->ClearPlayer();
@@ -222,7 +222,7 @@ void Pusher::bindSession(Session* session )
 bool Pusher::RebindSession(Session* session)
 {
 	if (this->rtspClient != nullptr ){
-        logger::Printf("call RebindSession[%s] to a Client-Pusher. got false", session->ID);
+        logger::info("call RebindSession[%s] to a Client-Pusher. got false", session->ID);
 		return false;
 	}
 	auto sess = this->session;
@@ -241,7 +241,7 @@ bool Pusher::RebindSession(Session* session)
 bool Pusher::RebindClient(RTSPClient* client)
 {
 	if (this->session != nullptr) {
-        logger::Printf("call RebindClient[%s] to a Session-Pusher. got false", client->ID);
+        logger::info("call RebindClient[%s] to a Session-Pusher. got false", client->ID);
 		return false;
 	}
 	auto sess = this->rtspClient;
@@ -280,7 +280,7 @@ void Pusher::Start()
 
 		if (pack == nullptr) {
 			if (!this->Stoped() ){
-				logger::Printf("pusher not stoped, but queue take out nullptr pack");
+				logger::info("pusher not stoped, but queue take out nullptr pack");
 			}
 			continue;
 		}
@@ -357,7 +357,7 @@ Pusher* Pusher::AddPlayer(Player* player)
         thread ss(&Player::Start, player);
         ss.detach();
 
-		logger::Printf("%v start, now player size[%d]", player, this->players.size());
+		logger::info("%v start, now player size[%d]", player, this->players.size());
 	}
 	this->playersLock.unlock();
 	return this;
@@ -374,7 +374,7 @@ Pusher*  Pusher::RemovePlayer(Player* _player)
 	delete(this->players, _player->session->ID);
 
 
-	logger::Printf("{} end, now player size[%d]\n", _player, this->players.size());
+	logger::info("{} end, now player size[%d]\n", _player, this->players.size());
 	this->playersLock.unlock();
 	return this;
 }

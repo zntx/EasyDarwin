@@ -7,6 +7,8 @@
 #include <map>
 #include <string>
 #include <sstream>
+#include <cstring>
+#include <cstdint>
 #include "Digest.h"
 #include "hdlog.h"
 #include "MD5.h"

@@ -1,89 +1,85 @@
 
 
 
-#include "net/Slice.h"
+
 #include <cstdint>
 #include <string>
 
+#include "net/Slice.h"
 #include "url.h"
 #include "hdlog.h"
 
 
-/**	@fn    parse_rtsp_url 
- *	@brief 根据URL地址分析出用户要点播的通道号，主子码流，是回放还是预览情况 是否是多播发送
- *	@param pURL(URL地址)
- *	@param stream_id(码流id)，0表示子码流1表示主码流
- *	@param chan_id(通道号) 默认都是1
- *	@param playback:是否是回放
- *	@param multicast :是否是多播发送
- *	@return 无
- */
-int Parse(Slice<char> uri)
+Result<Url> Url::Parse(Slice<char>& uri)
 {
-	if (uri.no_legal())
-	{
-		logger::Printf("parse_rtsp_url:input parameter is error");
-		return false;
-	}
+    Url url;
+    size_t pos = 0;
 
-    auto pos_opt = uri.find('?');
-    auto pos = pos_opt.unwrap_or(uri.size());
-    
-    auto base = uri.slice(0, pos).unwrap();
-    //auto Oparam = uri.slice(pos+1 );
-    //rtsp://admin:test1357@192.168.10.1:554/asddsa/asdasdsa
-
-    auto pos_o = base.find(Slice<char>("://", 3));
-    if( pos_o.is_empty() ) {
-        return false;
-    }
-
-    pos =  pos_o.unwrap();
-
-    if( pos + 3 > base.size() - 1 ) {
-        return false;
-    }
-
-    auto method = base.slice(0, pos).unwrap();
-    base =  base.slice( pos + 3 ).unwrap();
-    
-    pos_o = base.find('@');
-    if( !pos_o.is_empty() )
-    {   
-        pos =  pos_o.unwrap();
-
-        base =  base.slice( pos + 1).unwrap();
-    }
-
-    pos_o = base.find( '/');;
-    if( !pos_o.is_empty() )
-    {
-        pos =  pos_o.unwrap();
-
-        base =  base.slice( pos + 1).unwrap();
-    }
-    else
-    {
-        //uri->port  = 554;
+    // 解析协议
+    size_t protocolEnd = uri.find( "://" , 3);
+    if (protocolEnd != uri.len ) {
+        url.mothed = uri.subslice(0, protocolEnd);
+        pos = protocolEnd + 3;
     }
 
 
+    // 解析用户名和密码
+    size_t at_pos = uri.find('@', pos);
+    if (at_pos != uri.size()) {
+        size_t colon_pos = uri.find(':', pos);
 
+        if (colon_pos != uri.size() && colon_pos < at_pos) {
+            url.name = uri.subslice(pos, colon_pos - pos);
+            url.passwd = uri.subslice(colon_pos + 1, at_pos - colon_pos - 1);
+        }
+        else {
+            url.name = uri.subslice(pos, at_pos - pos);
+        }
+        pos = at_pos + 1;
+    }
 
+    // 解析主机名和端口号
+    size_t colon_pos = uri.find(':', pos);
+    size_t path_start = uri.find('/', pos);
+    if (colon_pos != std::string::npos && colon_pos < path_start) {
+        url.host = uri.subslice(pos, colon_pos - pos);
+        auto port_slice = uri.subslice(colon_pos + 1, path_start - colon_pos - 1);
 
+        if( port_slice.is_legal() && port_slice.size() <= 5 ) {
+            uint16_t _value = 0;
 
+            for( size_t index = 0; index < port_slice.size(); index++) {
+                if( port_slice[index] < 0 || port_slice[index] > 9) {
+                    _value = 0;
+                    break;
+                }
 
+                _value = _value * 10;
+                _value = _value + port_slice[index] - '0';
+            }
 
+            url.port = _value;
+        }
 
+        pos = path_start;
+    }
+    else {
+        url.host = uri.subslice(pos, path_start - pos);
+        url.port = 0;
+        pos = path_start;
+    }
 
+    // 解析路径
+    if (pos != uri.size()) {
+        url.path = uri.subslice(pos);
+    }
 
-
-
-
-
-
-
-    Url  url;
-
-	return 0;
+    return Ok(url);
 }
+
+Result<Url> Url::Parse(string uri)
+{
+    auto slice = Slice<char>(  (char*)uri.c_str(), uri.size());
+    return Parse( slice);
+}
+

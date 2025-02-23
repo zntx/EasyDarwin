@@ -39,7 +39,7 @@ Player* Player::QueueRTP(RTPPack* pack)
 {
 	//logger := this->logger
 	if (pack == nullptr ){
-		logger::Printf("player queue enter nil pack, drop it");
+		logger::info("player queue enter nil pack, drop it");
 		return this ;
 	}
 	if (this->paused && this->dropPacketWhenPaused) {
@@ -53,7 +53,7 @@ Player* Player::QueueRTP(RTPPack* pack)
 		this->queue.pop_front();
 		if (this->session->debugLogEnable ){
 			auto len = this->queue.size();
-			logger::Printf("Player {}, QueueRTP, exceeds limit{}, drop %d old packets, current queue.len={}\n", this->String(), this->queueLimit, oldLen - len, len);
+			logger::info("Player {}, QueueRTP, exceeds limit{}, drop %d old packets, current queue.len={}\n", this->String(), this->queueLimit, oldLen - len, len);
 		}
 	}
 	//this->cond.Signal();
@@ -89,18 +89,18 @@ void Player::Start()
 		}
 		if (pack == nullptr) {
 			if( !this->session->Stoped) {
-				logger::Printf("player not stoped, but queue take out nil pack");
+				logger::info("player not stoped, but queue take out nil pack");
 			}
 			continue;
 		}
 
         auto err = this->session->SendRTP(pack);
 		if (err.is_err()) {
-			logger::Printf("{}\n",err.unwrap_err());
+			logger::info("{}\n",err.unwrap_err());
 		}
 		auto elapsed = chrono::system_clock::now() - timer;
 		if (this->session->debugLogEnable && elapsed >= chrono::seconds(30)) {
-			logger::Printf("Player %s, Send a package.type:%d, queue.len=%d\n", this->session->String(), pack->Type, queueLen);
+			logger::info("Player %s, Send a package.type:%d, queue.len=%d\n", this->session->String(), pack->Type, queueLen);
 			timer = chrono::system_clock::now();
 		}
 	}
@@ -109,10 +109,10 @@ void Player::Start()
 void Player::Pause(bool paused)
 {
 	if (paused) {
-		logger::Printf("Player {}, Pause\n", this->session->String());
+		logger::info("Player {}, Pause\n", this->session->String());
 	} 
     else {
-		logger::Printf("Player {}, Play\n", this->session->String());
+		logger::info("Player {}, Play\n", this->session->String());
 	}
 	this->cond.lock();
 	if (paused && this->dropPacketWhenPaused && !this->queue.empty()) {
