@@ -10,7 +10,7 @@
 Server* GetServer()
 {
 	//once.Do(func() {
-    static Server instance();
+    static Server instance;
 	//})
 	return &instance;
 }
@@ -134,13 +134,13 @@ Result<void> Server::Start()
 #endif
 	this->Stoped = false;
 	this->tcpListener = &lisetener;
-	logger::Printf("rtsp server start on {:d}", this->TCPPort);
+	logger::info("rtsp server start on {:d}", this->TCPPort);
 	auto networkBuffer = utils::Conf().Section("rtsp").Key("network_buffer").MustInt(1048576);
 
 	while (!this->Stoped) {
         auto stream_warp = this->tcpListener->accept(1);
 		if ( stream_warp.is_err()) {
-			logger::Printf("{}", stream_warp.unwrap_err());
+			logger::info("{}", stream_warp.unwrap_err());
 			continue;
 		}
 
@@ -148,7 +148,7 @@ Result<void> Server::Start()
 
 		//if tcpConn, ok := conn.(*net.TCPConn); ok {
 			if (!conn.SetSoRcvbuf(networkBuffer)) {
-				logger::Printf("rtsp server conn set read buffer error,  " );
+				logger::info("rtsp server conn set read buffer error,  " );
 			}
 			if (!conn.SetSoSendbuf(networkBuffer) ) {
 				logger::Printf("rtsp server conn set write buffer error, {}" );

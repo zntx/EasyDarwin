@@ -1,112 +1,96 @@
 
-#include <map>
+
 #include <string>
 #include "net.h"
 #include "stringExtend.h"
-
-using namespace std;
-
+#include "sdp-parser.h"
 
 
-class SDPInfo {
-	string       AVType;             
-	string       Codec ;             
-	int          TimeScale ;         
-	string       Control;            
-	int          Rtpmap;             
-	Slice<char>  Config;             
-	[][]byte     SpropParameterSets; 
-	int          PayloadType ;       
-	int          SizeLength;         
-	int          IndexLength ;       
-};
 
-map<string, SDPInfo>  ParseSDP(string sdpRaw) 
+map<string, SDPInfo>  ParseSDP(const string& sdp_raw)
 {
 	map<string, SDPInfo>  sdpMap ;
-	SDPInfo* info;
+	SDPInfo* info = nullptr;
 
-    auto lines = string_Split(sdpRaw, "\n");
+    auto lines = string_Split(sdp_raw, "\n");
 	for ( auto & line : lines) {
-        string_Trim(line);
+        string_TrimSpace(line);
+        auto typeval = string_SplitN(line, "=", 2);
+        if (typeval.size() == 2 ){
+            auto fields = string_SplitN(typeval[1], " ", 2);
 
-        string key;
-        string value;
-
-		if (mappify(line, key, value , "=")) {
-			//fields := strings.SplitN(key, " ", 2)
-
-            string item1;
-            string item2;
-            auto fields = mappify(key, item1, item2 , " ");
-            
 			//switch typeval[0] {
-			if( key == "m") {
-				if (fields > 0 ){
-					if( item1 ==  "audio" || item1 ==  "video" ){
-						sdpMap[item1] = SDPInfo{AVType: item1};
-						info = &sdpMap[item1];
+			if( typeval[0] == "m") {
+				if (fields.size() > 0 ){
+					if( fields[0] ==  "audio" || fields[0] ==  "video" ){
+                        SDPInfo sdpInfo;
+                        sdpInfo.AVType = fields[0];
+						sdpMap[fields[0]] = sdpInfo;
+						auto index = sdpMap.find(fields[0]);
+                        info = &index->second;
 
-						auto mfields = string_Split(item2, " ");
+						auto mfields = string_Split(fields[1], " ");
 						if (mfields.size() >= 3) {
-							info.PayloadType = strconv.Atoi(mfields[2]);
+							info->PayloadType = std::stoi(mfields[2]);
 						}
 					}
 				}
             }
-			else if( key == "a" ){
+			else if( typeval[0] == "a" ){
 				if (info != nullptr ){
-					for _, field := range fields {
-						keyval := strings.SplitN(field, ":", 2)
-						if len(keyval) >= 2 {
-							key := keyval[0]
-							val := keyval[1]
-							switch key {
-							case "control":
-								info.Control = val
-							case "rtpmap":
-								info.Rtpmap, _ = strconv.Atoi(val)
+					for ( auto &&field :fields)  {
+						auto keyval = string_SplitN(field, ":", 2);
+						if (keyval.size() >= 2 ){
+							auto key = keyval[0];
+							auto val = keyval[1];
+							//switch key {
+							if( key == "control")
+								info->Control = val;
+							if( key == "rtpmap")
+								info->Rtpmap  = std::stoi(val);
+						}
+
+                        keyval = string_Split(field, "/");
+						if (keyval.size() >= 2) {
+							auto key = keyval[0];
+
+                            if( key == "MPEG4-GENERIC")
+								info->Codec = "aac";
+                            if( key == "H264")
+								info->Codec = "h264";
+                            if( key == "H265")
+								info->Codec = "h265";
+
+							if (string_isDigit(keyval[1])) {
+								info->TimeScale = std::stoi(keyval[1]);
 							}
 						}
-						keyval = strings.Split(field, "/")
-						if len(keyval) >= 2 {
-							key := keyval[0]
-							switch key {
-							case "MPEG4-GENERIC":
-								info.Codec = "aac"
-							case "H264":
-								info.Codec = "h264"
-							case "H265":
-								info.Codec = "h265"
-							}
-							if i, err := strconv.Atoi(keyval[1]); err == nil {
-								info.TimeScale = i
-							}
-						}
-						keyval = strings.Split(field, ";")
-						if len(keyval) > 1 {
-							for _, field := range keyval {
-								keyval := strings.SplitN(field, "=", 2)
-								if len(keyval) == 2 {
-									key := strings.TrimSpace(keyval[0])
-									val := keyval[1]
-									switch key {
-									case "config":
-										info.Config, _ = hex.DecodeString(val)
-									case "sizelength":
-										info.SizeLength, _ = strconv.Atoi(val)
-									case "indexlength":
-										info.IndexLength, _ = strconv.Atoi(val)
-									case "sprop-parameter-sets":
-										fields := strings.Split(val, ",")
-										for _, field := range fields {
-											val, _ := base64.StdEncoding.DecodeString(field)
-											info.SpropParameterSets = append(info.SpropParameterSets, val)
-										}
-									}
+
+                        keyval = string_Split(field, ";");
+						if (keyval.size() > 1 ) {
+							for ( auto &&field : keyval ){
+								keyval = string_SplitN(field, "=", 2);
+								if (keyval.size() == 2) {
+									auto key = string_TrimSpace(keyval[0]);
+									auto val = keyval[1];
+									//switch key {
+//                                    if( key == "config")
+//										info->Config  = hex.DecodeString(val);
+                                    if( key == "sizelength")
+										info->SizeLength = std::atoi(val.c_str());
+                                    if( key == "indexlength")
+										info->IndexLength = std::atoi(val.c_str());
+//                                    if( key == "sprop-parameter-sets") {
+//										auto fields = string_Split(val, ",");
+//										for (auto &&field : fields ){
+//											val, _ := base64.StdEncoding.DecodeString(field);
+//											info->SpropParameterSets.append(  val);
+//										}
+//									}
 								}
 							}
 						}
+
 					}
 				}
             }

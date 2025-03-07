@@ -27,11 +27,11 @@ public:
     *bufio.ReadWriter	connRW ;
     string          Session ;
     int             Seq  ;
-    int        			InBytes ;
-    int        			OutBytes ;
-    TransType        	TransType ;
+    int        		InBytes ;
+    int        		OutBytes ;
+    TransType       TransType ;
     chrono::_V2::system_clock::time_point  StartAt ;
-    *sdp.Session     	Sdp ;
+    *sdp.Session    Sdp ;
     string        	AControl;
     string        	VControl ;
     string        	ACodec ;

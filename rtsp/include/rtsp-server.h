@@ -12,10 +12,10 @@ using namespace std;
 
 class Server{
 	
-	TcpListener* tcpListener ;
-	int TCPPort;        
-	bool Stoped;         
-	map<string, Pusher*> pushers;         // Path <-> Pusher
+	TcpListener* tcpListener = nullptr;
+	int TCPPort = 554;
+	bool Stoped = false;
+	map<string, Pusher*> pushers ;         // Path <-> Pusher
 	mutex pushersLock ;
 	//chan *Pusher addPusherCh ;
 	//chan *Pusher removePusherCh ;

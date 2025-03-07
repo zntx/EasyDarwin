@@ -19,13 +19,15 @@
 using namespace std;
 
 //删除空白字符
-std::string& string_Trim(std::string &s, const string& split = " ");
+std::string& string_TrimSpace(std::string &s, const string& split = " ");
 
 // 使用字符分割
 vector<string> string_Split(const string& str, const char split );
 
 // 使用字符串分割
 vector<string> string_Split(const string& str, const string& splits );
+
+std::vector<std::string> string_SplitN(const std::string& str, const std::string& splits, size_t number);
 
 // 分割 key value
 std::map<std::string, std::string> mappify2(std::string const& s);
@@ -34,7 +36,7 @@ std::map<std::string, std::string> mappify2(std::string const& s);
 bool mappify(std::string const& key_pos, string& key, string& value, const string& split = "=");
 
 // 字符串是否以指定字符串开头
-bool StringHasPrefix(std::string& str, std::string prefix);
+bool string_isPrefix(std::string& str, std::string prefix);
 
 //判断字符串是数字
 bool string_isDigit(const std::string & str);
@@ -44,5 +46,7 @@ string& string_ToLower( std::string& str);
 
 //字符串是否已指定的字符串开头
 bool string_start_with(const std::string& str, const std::string& prefix);
+
+bool string_start_with(const std::string& str, const char* prefix);
 
 #endif //EASYDARWIN_STRINGEXTEND_H

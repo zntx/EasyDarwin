@@ -3,9 +3,10 @@
 //
 
 #include <algorithm>
+#include <cstring>
 #include "stringExtend.h"
 
-std::string& string_Trim(std::string &s, const string& split)
+std::string& string_TrimSpace(std::string &s, const string& split)
 {
     if (s.empty())
     {
@@ -32,7 +33,7 @@ vector<string> string_Split(const string& str, const char split )
     while (pos != std::string::npos)
     {
         string temp = strs.substr(0, pos);
-        string_Trim(temp);
+        string_TrimSpace(temp);
         res.push_back(temp);
         //去掉已分割的字符串,在剩下的字符串中进行分割
         strs = strs.substr(pos + 1, strs.size());
@@ -57,7 +58,7 @@ vector<string> string_Split(const string& str, const string& splits )
     while (pos != strs.npos)
     {
         string temp = strs.substr(0, pos);
-        string_Trim(temp);
+        string_TrimSpace(temp);
         res.push_back(temp);
         //去掉已分割的字符串,在剩下的字符串中进行分割
         strs = strs.substr(pos + step, strs.size());
@@ -66,6 +67,41 @@ vector<string> string_Split(const string& str, const string& splits )
 
     return res;
 }
+
+// 使用字符串分割
+std::vector<std::string> string_SplitN(const std::string& str, const std::string& splits, size_t number) {
+    std::vector<std::string> res;
+    auto start = 0;
+
+    if (str.empty())
+        return res;
+
+    if (number == 0) {
+        std::string temp = str;
+        string_TrimSpace(temp);
+        res.push_back(temp);
+        return res;
+    }
+
+    for (auto index = 0; index < number - 1; index++) {
+        auto pos = str.find(splits, start);
+        if (pos == std::string::npos)
+            break;
+
+        std::string temp = str.substr(start, pos - start);
+        string_TrimSpace(temp);
+        res.push_back(temp);
+
+        start = pos + splits.length();
+    }
+
+    std::string temp = str.substr(start);
+    string_TrimSpace(temp);
+    res.push_back(temp);
+
+    return res;
+}
+
 
 std::map<std::string, std::string> mappify2(std::string const& s)
 {
@@ -109,7 +145,7 @@ bool mappify(std::string const& key_pos, string& key, string& value, const strin
 
 
 
-bool StringHasPrefix(std::string& str, std::string prefix)
+bool string_isPrefix(std::string& str, std::string prefix)
 {
     // 首先检查 prefix 的长度是否小于等于 str 的长度
     if (prefix.length() <= str.length()) {
@@ -143,4 +179,10 @@ bool string_start_with(const std::string& str, const std::string& prefix)
 {
     return str.size() >= prefix.size() &&
            str.compare(0, prefix.size(), prefix) == 0;
+}
+
+bool string_start_with(const std::string& str, const char* prefix)
+{
+    return str.size() >= strlen(prefix) &&
+           str.compare(0, strlen(prefix), prefix) == 0;
 }

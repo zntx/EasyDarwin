@@ -6,6 +6,7 @@
 #include <chrono>
 #include <thread>
 #include <random>
+#include <utility>
 #include "fmt.h"
 #include "url.h"
 #include "utils.h"
@@ -16,22 +17,22 @@
 
 RTSPClient::RTSPClient( Server *server, string rawUrl, string path, int64_t sendOptionMillis, string agent)
 {	
-	auto debugLogEnable = utils::Conf().Section("rtsp").Key("debug_log_enable").MustInt(0);
+	auto debug_log_enable = utils::Conf().Section("rtsp").Key("debug_log_enable").MustInt(0);
 
-    server =              server;
-	Stoped=               false;
-	URL=                  rawUrl;
-	ID=                   utils::RandomNumber();
-	Path=                 path;
-	TransType=            TransType::TRANS_TYPE_TCP;
-	vRTPChannel=          0;
-	vRTPControlChannel=   1;
-	aRTPChannel=          2;
-	aRTPControlChannel=   3;
-	OptionIntervalMillis= sendOptionMillis;
+    server =               server;
+	Stoped =               false;
+	URL =                  std::move(rawUrl);
+	ID =                   utils::RandomNumber();
+	Path =                 std::move(path);
+	TransType =            TransType::TRANS_TYPE_TCP;
+	vRTPChannel =          0;
+	vRTPControlChannel =   1;
+	aRTPChannel =          2;
+	aRTPControlChannel =   3;
+	OptionIntervalMillis = sendOptionMillis;
 	StartAt =              chrono::system_clock::now();
-	Agent =                agent;
-	debugLogEnable =       debugLogEnable != 0;
+	Agent =                std::move(agent);
+    debug_log_enable =     debug_log_enable != 0;
 }
 
 
@@ -40,7 +41,7 @@ string RTSPClient::String()
 	return fmt::format("client[{}]", this->URL);
 }
 
-Result<RTSPClient> NewRTSPClient(Server *server, string rawUrl , int64_t sendOptionMillis , string agent ) 
+Result<RTSPClient> NewRTSPClient(Server *server, string rawUrl , int64_t sendOptionMillis , string agent )
 {
 	auto url_r =   Url::Parse(rawUrl);
 	if ( url_r.is_err()){
@@ -54,7 +55,7 @@ Result<RTSPClient> NewRTSPClient(Server *server, string rawUrl , int64_t sendOpt
 	// 	this->logger.SetOutput(utils.GetLogWriter())
 	// }
 
-    auto rtspClient = RTSPClient(server, rawUrl,url.Path(), sendOptionMillis, agent);
+    auto rtspClient = RTSPClient(server, rawUrl,url.Path(), sendOptionMillis, std::move(agent));
 	return Ok( std::move(rtspClient));
 }
 #if 0
@@ -101,33 +102,36 @@ Result<string> RTSPClient::checkAuth(string method, Response* resp)
 	if (resp->StatusCode == 401) {
 
 		// need auth.
-		auto AuthHeaders = resp->Header["WWW-Authenticate"];
-		auths, ok := AuthHeaders.([]string);
+        auto AuthHeaders = resp->Header.find("WWW-Authenticate");
+		//auto AuthHeaders = resp->Header["WWW-Authenticate"];
+		//auths, ok := AuthHeaders.([]string);
 
-		if ok {
-			for( _, authLine := range auths) {
+		if ( AuthHeaders != resp->Header.end() ) {
+            auto auths = AuthHeaders->second;
+			//for( const auto& authLine : auths) {
 
-				if (strings.IndexAny(authLine, "Digest")) == 0 {
-					// 					realm="HipcamRealServer",
+				if (string_start_with(authLine, "Digest") == 0 ) {
+					// realm="HipcamRealServer",
 					// nonce="3b27a446bfa49b0c48c3edb83139543d"
-					this->authLine = authLine
-					return DigestAuth(authLine, method, this->URL)
+					this->authLine = authLine;
+					return DigestAuth(authLine, method, this->URL);
 				}
-                else if (strings.IndexAny(authLine, "Basic") == 0) {
+                else if ( string_start_with(authLine, "Basic") == 0) {
 					// not support yet
 					// TODO..
-				}
+                    return Err(string("not support Basic auth yet"));
+                }
 
-			}
+			//}
 			return Err(string("auth error"));
 		}
         else {
-			authLine, _ := AuthHeaders.(string)
-			if (strings.IndexAny(authLine, "Digest") == 0 ){
+			authLine, _ := `AuthHeaders`.(string)
+			if (string_start_with(authLine, "Digest") == 0 ){
 				this->authLine = authLine
 				return DigestAuth(authLine, method, this->URL)
 			}
-            else if (strings.IndexAny(authLine, "Basic") == 0 ){
+            else if (string_start_with(authLine, "Basic") == 0 ){
 				// not support yet
 				// TODO..
 				return Err(string("not support Basic auth yet"));
@@ -149,56 +153,58 @@ Result<void> RTSPClient::requestStream( chrono::duration<Rep, Period>& timeout )
 //		}
 //	}()
 
-	auto l_r = Url::Parse(this->URL);
-	if( l_r.is_err()) {
-		return Err(l_r.unwrap_err());
+	auto url_res = Url::Parse(this->URL);
+	if( url_res.is_err()) {
+		return Err(url_res.unwrap_err());
 	}
 
-    auto l = l_r.unwrap();
+    auto url = url_res.unwrap();
 
-    auto method =  l.Method();
+    auto method =  url.Method();
 	if( string_ToLower( method) != "rtsp" ){
 		return Err(std::string("RTSP url is invalid") );
 	}
-    auto hostname = l.Hostname();
+    auto hostname = url.Hostname();
 	if (string_ToLower( hostname).empty() ){
 		return Err(std::string("RTSP url is invalid") );
 	}
-	auto port = l.Port();
+	auto port = url.Port();
 	if ( port == 0) {
 		port = 554;
 	};
-	conn, err := net.DialTimeout("tcp", l.Hostname()+":"+port, timeout);
-	if( err != nullptr) {
+
+    auto conn_err = TcpStream::Connect( url.Hostname() + to_string( port ), timeout );
+	if( conn_err.is_err() ) {
 		// handle error
-		return err ;
+		return Err( conn_err.unwrap() ) ;
 	}
 
 	auto networkBuffer = utils::Conf().Section("rtsp").Key("network_buffer").MustInt(204800);
 
-	timeoutConn := RichConn{
-		conn,
-		timeout,
-	}
-	this->Conn = &timeoutConn;
-	this->connRW = bufio.NewReadWriter(bufio.NewReaderSize(&timeoutConn, networkBuffer), bufio.NewWriterSize(&timeoutConn, networkBuffer));
+//	timeoutConn := RichConn{
+//		conn,
+//		timeout,
+//	}
+//	this->Conn = &timeoutConn;
+//	this->connRW = bufio.NewReadWriter(bufio.NewReaderSize(&timeoutConn, networkBuffer), bufio.NewWriterSize(&timeoutConn, networkBuffer));
+    this->Conn = conn_err.unwrap();
 
 	map<string, string> headers ;
 	headers["Require"] = "implicit-play";
 	// An OPTIONS request returns the request types the server will accept.
-	auto resp_err = this->Request("OPTIONS", headers);
-	if( resp_err.is_ok()) {
+    auto resp_err = this->Request("OPTIONS", headers);
+	if( resp_err.is_err()) {
 		auto resp = resp_err.unwrap();
 
-        Authorization, _ := this->checkAuth("OPTIONS", resp);
-        if (len(Authorization) > 0) {
+        auto Authorization = this->checkAuth("OPTIONS", resp);
+        if ( Authorization.is_ok() ) {
             map<string, string> headers ;
             headers["Require"] = "implicit-play";
-            headers["Authorization"] = Authorization;
+            headers["Authorization"] = Authorization.unwrap();
             // An OPTIONS request returns the request types the server will accept.
-            resp_err = this->Request("OPTIONS", headers);
-            if (err != nullptr ){
-                return err;
+            auto resp_err = this->Request("OPTIONS", headers);
+            if ( resp_err.is_err()   ){
+                return Err(resp_err.unwrap_err());
             }
         }
 
@@ -211,116 +217,120 @@ Result<void> RTSPClient::requestStream( chrono::duration<Rep, Period>& timeout )
 	// A DESCRIBE request includes an RTSP URL (rtsp://...), and the type of reply data that can be handled. This reply includes the presentation description,
 	// typically in Session Description Protocol (SDP) format. Among other things, the presentation description lists the media streams controlled with the aggregate URL.
 	// In the typical case, there is one media stream each for audio and video.
-	headers = make(map[string]string);
+	//headers = make(map[string]string);
+    map<string, string> headers ;
 	headers["Accept"] = "application/sdp";
-	resp, err = this->Request("DESCRIBE", headers);
-	if (err != nullptr ){
-		if (resp != nullptr ){
-			authorization, _ := this->checkAuth("DESCRIBE", resp)
-			if (len(authorization) > 0 ){
-				headers := make(map[string]string)
-				headers["Authorization"] = authorization
-				headers["Accept"] = "application/sdp"
-				resp, err = this->Request("DESCRIBE", headers)
+	auto resp_err = this->Request("DESCRIBE", headers);
+	if ( resp_err.is_err() ){
+			auto authorization = this->checkAuth("DESCRIBE", resp_err.unwrap() );
+			if ( authorization.is_ok() ){
+				//headers := make(map[string]string)
+				headers["Authorization"] = authorization.unwrap();
+				headers["Accept"] = "application/sdp";
+				resp_err = this->Request("DESCRIBE", headers);
+                if (resp_err.is_err() ) {
+                    return Err(resp_err.unwrap_err());
+                }
 			}
-			if (err != nullptr) {
-				return err
-			}
-		}
-        else {
-			return err
-		}
+    }
+    else {
+        return Err(resp_err.unwrap_err());
+    }
+
+    auto resp = resp_err.unwrap();
+	auto sdp_err = sdp.ParseString(resp->Body);
+	if (sdp_err.is_err()) {
+		return Err(sdp_err.);
 	}
-	_sdp, err := sdp.ParseString(resp.Body)
-	if (err != nullptr) {
-		return err
-	}
-	this->Sdp = _sdp;
+	this->Sdp = sdp_err.unwrap();
 	this->SDPRaw = resp.Body;
-	session := "";
+	string session ;
 	for( _, media := range _sdp.Media) {
-		switch media.Type {
+		switch (media.Type) {
 		case "video":
-			this->VControl = media.Attributes.Get("control")
-			this->VCodec = media.Formats[0].Name
-			var _url = ""
-			if strings.Index(strings.ToLower(this->VControl), "rtsp://") == 0 {
-				_url = this->VControl
-			} else {
-				_url = strings.TrimRight(this->URL, "/") + "/" + strings.TrimLeft(this->VControl, "/")
-			}
-			headers = make(map[string]string)
-			if this->TransType == TRANS_TYPE_TCP {
-				headers["Transport"] = fmt.Sprintf("RTP/AVP/TCP;unicast;interleaved=%d-%d", this->vRTPChannel, this->vRTPControlChannel)
+			this->VControl = media.Attributes.Get("control");
+			this->VCodec = media.Formats[0].Name;
+			var _url = "";
+			if strings.Index(string_ToLower(this->VControl), "rtsp://") == 0 {
+				_url = this->VControl;
 			}
             else {
-				if this->UDPServer == nullptr {
-					this->UDPServer = &UDPServer{RTSPClient: client}
+				_url = strings.TrimRight(this->URL, "/") + "/" + strings.TrimLeft(this->VControl, "/");
+			}
+			headers = make(map[string]string)
+			if (this->TransType == TRANS_TYPE_TCP ){
+				headers["Transport"] = fmt.Sprintf("RTP/AVP/TCP;unicast;interleaved=%d-%d", this->vRTPChannel, this->vRTPControlChannel);
+			}
+            else {
+				if (this->UDPServer == nullptr) {
+					this->UDPServer = &UDPServer{RTSPClient: client};
 				}
 				//RTP/AVP;unicast;client_port=64864-64865
-				err = this->UDPServer.SetupVideo()
-				if err != nullptr {
-					this->logger.Printf("Setup video err.%v", err)
-					return err
+				err = this->UDPServer.SetupVideo();
+				if( err != nullptr ){
+					this->logger.Printf("Setup video err.%v", err);
+					return err;
 				}
-				headers["Transport"] = fmt.Sprintf("RTP/AVP/UDP;unicast;client_port=%d-%d", this->UDPServer.VPort, this->UDPServer.VControlPort)
+				headers["Transport"] = fmt.Sprintf("RTP/AVP/UDP;unicast;client_port=%d-%d", this->UDPServer.VPort, this->UDPServer.VControlPort);
 				this->Conn.timeout = 0 //	UDP ignore timeout
 			}
-			if session != "" {
-				headers["Session"] = session
+			if (session != "") {
+				headers["Session"] = session;
 			}
 			this->logger.Printf("Parse DESCRIBE response, VIDEO VControl:%s, VCode:%s, url:%s,Session:%s,vRTPChannel:%d,vRTPControlChannel:%d", this->VControl, this->VCodec, _url, session, this->vRTPChannel, this->vRTPControlChannel)
-			resp, err = this->RequestWithPath("SETUP", _url, headers, true)
-			if err != nullptr {
-				return err
+			resp, err = this->RequestWithPath("SETUP", _url, headers, true);
+			if (err != nullptr ){
+				return err;
 			}
-			session, _ = resp.Header["Session"].(string)
+			session, _ = resp.Header["Session"].(string);
+            break;
+
 		case "audio":
-			this->AControl = media.Attributes.Get("control")
-			this->ACodec = media.Formats[0].Name
-			var _url = ""
-			if strings.Index(strings.ToLower(this->AControl), "rtsp://") == 0 {
-				_url = this->AControl
+			this->AControl = media.Attributes.Get("control");
+			this->ACodec = media.Formats[0].Name;
+			var _url = "";
+			if (strings.Index(string_ToLower(this->AControl), "rtsp://") == 0 ){
+				_url = this->AControl;
 			}
             else {
-				_url = strings.TrimRight(this->URL, "/") + "/" + strings.TrimLeft(this->AControl, "/")
+				_url = strings.TrimRight(this->URL, "/") + "/" + strings.TrimLeft(this->AControl, "/");
 			}
-			headers = make(map[string]string)
-			if this->TransType == TRANS_TYPE_TCP {
-				headers["Transport"] = fmt.Sprintf("RTP/AVP/TCP;unicast;interleaved=%d-%d", this->aRTPChannel, this->aRTPControlChannel)
+			headers = make(map[string]string);
+			if (this->TransType == TRANS_TYPE_TCP ){
+				headers["Transport"] = fmt.Sprintf("RTP/AVP/TCP;unicast;interleaved=%d-%d", this->aRTPChannel, this->aRTPControlChannel);
 			}
             else {
-				if this->UDPServer == nullptr {
-					this->UDPServer = &UDPServer{RTSPClient: client}
+				if (this->UDPServer == nullptr ){
+					this->UDPServer = &UDPServer{RTSPClient: client};
 				}
-				err = this->UDPServer.SetupAudio()
-				if err != nullptr {
-					this->logger.Printf("Setup audio err.%v", err)
-					return err
+				err = this->UDPServer.SetupAudio();
+				if (err != nullptr) {
+					this->logger.Printf("Setup audio err.%v", err);
+					return err;
 				}
-				headers["Transport"] = fmt.Sprintf("RTP/AVP/UDP;unicast;client_port=%d-%d", this->UDPServer.APort, this->UDPServer.AControlPort)
-				this->Conn.timeout = 0 //	UDP ignore timeout
+				headers["Transport"] = fmt.Sprintf("RTP/AVP/UDP;unicast;client_port=%d-%d", this->UDPServer.APort, this->UDPServer.AControlPort);
+				this->Conn.timeout = 0 ;//	UDP ignore timeout
 			}
-			if session != "" {
-				headers["Session"] = session
+			if (session != "" ){
+				headers["Session"] = session;
 			}
 			this->logger.Printf("Parse DESCRIBE response, AUDIO AControl:%s, ACodec:%s, url:%s,Session:%s, aRTPChannel:%d,aRTPControlChannel:%d", this->AControl, this->ACodec, _url, session, this->aRTPChannel, this->aRTPControlChannel)
-			resp, err = this->RequestWithPath("SETUP", _url, headers, true)
-			if err != nullptr {
-				return err
+			resp, err = this->RequestWithPath("SETUP", _url, headers, true);
+			if (err != nullptr) {
+				return err;
 			}
-			session, _ = resp.Header["Session"].(string)
+			session, _ = resp.Header["Session"].(string);
 		}
 	}
-	headers = make(map[string]string)
+	headers = make(map[string]string);
 	if (session != "") {
-		headers["Session"] = session
+		headers["Session"] = session;
 	}
-	resp, err = this->Request("PLAY", headers)
+	resp, err = this->Request("PLAY", headers);
 	if (err != nullptr) {
-		return err
+		return err;
 	}
-	return nullptr
+	return nullptr;
 }
 
 Result<void>  RTSPClient::startStream()

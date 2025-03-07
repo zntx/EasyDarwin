@@ -106,11 +106,11 @@ Digest* Digest::From(const string& str )
 
         if( key == "realm")
         {
-            digest->realm = string_Trim(value, "\"");
+            digest->realm = string_TrimSpace(value, "\"");
         }
         else if( key == "nonce")
         {
-            digest->nonce = string_Trim(value, "\"");
+            digest->nonce = string_TrimSpace(value, "\"");
         }
         else if( key == "stale")
         {

@@ -8,24 +8,24 @@
 Request* NewRequest(string content ) 
 {
 	//lines := strings.Split(strings.TrimSpace(content), "\r\n")
-    auto lines = string_Split(string_Trim(content), "\r\n");
+    auto lines = string_Split(string_TrimSpace(content), "\r\n");
 	if ( lines.empty()) {
         logger::error("invalid rtsp request, line[0] " );
 		return nullptr;
 	}
-    auto items = string_Split(string_Trim(lines[0]), " ");
+    auto items = string_Split(string_TrimSpace(lines[0]), " ");
 	if (items.size() < 3) {
         logger::error("invalid rtsp request, line[0] {}", lines[0]);
 		return nullptr;
 	}
-	if (!StringHasPrefix(items[2], string("RTSP") )) {
+	if (!string_isPrefix(items[2], string("RTSP"))) {
 		logger::error("invalid rtsp request, line[0] {}", lines[0]);
 		return nullptr;
 	}
 
     map<string, string> header;
 	for ( size_t i = 1; i < lines.size(); i++) {
-		auto line = string_Trim(lines[i]);
+		auto line = string_TrimSpace(lines[i]);
         string key;
         string value;
         if (mappify(line, key, value, ":")) {
